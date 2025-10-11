@@ -1,0 +1,12 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      // DANGER: Allow all reads and writes to any document in the database.
+      // This is for DEVELOPMENT and DEMO purposes ONLY.
+      // Anyone can read, write, and delete any data.
+      allow read, write: if true;
+    }
+  }
+}

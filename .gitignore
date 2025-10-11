@@ -1,0 +1,5 @@
+assets/service_account.json
+
+# Project exclude paths
+/.dart_tool/
+/build/
