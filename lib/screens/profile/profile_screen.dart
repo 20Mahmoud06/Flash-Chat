@@ -164,6 +164,10 @@ class _BuildProfileView extends StatelessWidget {
                   _buildInfoRow(Icons.email_outlined, email),
                   const Divider(height: 24),
                   _buildInfoRow(Icons.phone_outlined, phone),
+                  if (user.bio != null && user.bio!.isNotEmpty) ...[
+                    const Divider(height: 24),
+                    _buildInfoRow(Icons.info_outline, user.bio!),
+                  ],
                 ],
               ),
             ),

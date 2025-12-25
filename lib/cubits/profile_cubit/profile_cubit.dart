@@ -80,6 +80,7 @@ class ProfileCubit extends Cubit<ProfileState> {
     required String newPhone,
     required String newEmail,
     String? newEmoji,
+    String? newBio,
   }) async {
     emit(ProfileLoading());
     try {
@@ -93,6 +94,7 @@ class ProfileCubit extends Cubit<ProfileState> {
       if (newFirstName != originalUser.firstName) firestoreUpdates['firstName'] = newFirstName;
       if (newLastName != originalUser.lastName) firestoreUpdates['lastName'] = newLastName;
       if (newEmoji != null && newEmoji != originalUser.avatarEmoji) firestoreUpdates['avatarEmoji'] = newEmoji;
+      if (newBio != originalUser.bio) firestoreUpdates['bio'] = newBio;
 
       // Validate and add phone number if changed
       if (newPhone != originalUser.phoneNumber) {

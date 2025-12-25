@@ -44,6 +44,7 @@ dependencies:
 
   bloc: any
   swipe_to: ^1.0.6
+  bidi: ^2.0.13
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -188,6 +188,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
                       isMe: isMe,
                       sender: sender,
                       group: widget.group,
+                      members: _members,
                       onReply: _setReplyingTo,
                     );
 
@@ -303,6 +304,7 @@ class GroupMessageBubble extends StatefulWidget {
   final bool isMe;
   final UserModel? sender;
   final GroupModel group;
+  final Map<String, UserModel> members;
   final Function(MessageModel, String) onReply;
 
   const GroupMessageBubble({
@@ -311,6 +313,7 @@ class GroupMessageBubble extends StatefulWidget {
     required this.isMe,
     this.sender,
     required this.group,
+    required this.members,
     required this.onReply,
   });
 
@@ -373,6 +376,13 @@ class _GroupMessageBubbleState extends State<GroupMessageBubble> {
                             bottomLeft: widget.isMe ? Radius.circular(18.r) : Radius.circular(4.r),
                             bottomRight: widget.isMe ? Radius.circular(4.r) : Radius.circular(18.r),
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -382,8 +392,14 @@ class _GroupMessageBubbleState extends State<GroupMessageBubble> {
                                 margin: EdgeInsets.only(bottom: 8.h),
                                 padding: EdgeInsets.all(8.w),
                                 decoration: BoxDecoration(
-                                  color: Colors.lightBlue.shade50,
+                                  color: Colors.lightBlue.shade50.withOpacity(0.8),
                                   borderRadius: BorderRadius.circular(8.r),
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: widget.isMe ? Colors.white : Colors.lightBlueAccent,
+                                      width: 4.w,
+                                    ),
+                                  ),
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,7 +407,7 @@ class _GroupMessageBubbleState extends State<GroupMessageBubble> {
                                     CustomText(
                                       text: widget.message.repliedTo!['senderName'] ?? 'Unknown',
                                       fontSize: 12.sp,
-                                      textColor: Colors.grey.shade800,
+                                      textColor: Colors.lightBlueAccent,
                                       fontWeight: FontWeight.bold,
                                     ),
                                     CustomText(
@@ -432,20 +448,23 @@ class _GroupMessageBubbleState extends State<GroupMessageBubble> {
                       ),
                       if (widget.message.reactions.isNotEmpty)
                         Positioned(
-                          bottom: -15.h,
+                          bottom: -12.h,
                           left: 0,
                           right: 0,
                           child: Center(
-                            child: Container(
-                              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade200,
-                                borderRadius: BorderRadius.circular(12.r),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
+                            child: GestureDetector(
+                              onTap: () => _showReactionsDialog(context),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
+                                ),
+                                child: CustomText(
+                                    text: widget.message.reactions.values.toSet().join(''),
+                                    fontSize: 14.sp),
                               ),
-                              child: CustomText(
-                                  text: widget.message.reactions.values.toSet().join(''),
-                                  fontSize: 14.sp),
                             ),
                           ),
                         ),
@@ -465,6 +484,43 @@ class _GroupMessageBubbleState extends State<GroupMessageBubble> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showReactionsDialog(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser!;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.r)),
+        title: const CustomText(text: "Reactions", fontWeight: FontWeight.bold, textColor: Colors.black),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: widget.message.reactions.length,
+            itemBuilder: (context, index) {
+              final uid = widget.message.reactions.keys.elementAt(index);
+              final emoji = widget.message.reactions[uid]!;
+              final user = widget.members[uid];
+              final name = (uid == currentUser.uid)
+                  ? 'You'
+                  : (user != null ? '${user.firstName} ${user.lastName}' : 'Unknown');
+              return ListTile(
+                leading: CustomText(text: emoji, fontSize: 20.sp),
+                title: CustomText(text: name),
+              );
+            },
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.lightBlueAccent),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const CustomText(text: "OK", fontWeight: FontWeight.bold, textColor: Colors.white),
+          ),
+        ],
       ),
     );
   }
@@ -539,7 +595,7 @@ class _GroupMessageBubbleState extends State<GroupMessageBubble> {
                           children: [
                             Icon(Icons.check_circle, color: Colors.white, size: 20.sp),
                             SizedBox(width: 12.w),
-                            CustomText(text: 'Message copied to clipboard'),
+                            const CustomText(text: 'Message copied to clipboard'),
                           ],
                         ),
                         backgroundColor: Colors.lightBlueAccent,

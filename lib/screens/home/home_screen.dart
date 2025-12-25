@@ -1,7 +1,6 @@
 import 'package:animate_do/animate_do.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flash_chat_app/core/routes/route_names.dart';
 import 'package:flash_chat_app/models/group_model.dart';
 import 'package:flash_chat_app/models/user_model.dart';
 import 'package:flash_chat_app/screens/home/contacts_screen.dart';
@@ -95,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Navigator.push(
                       context,
                       PageRouteBuilder(
-                        pageBuilder: (context, animation, secondaryAnimation) => ProfileScreen(),
+                        pageBuilder: (context, animation, secondaryAnimation) => const ProfileScreen(),
                         transitionsBuilder: PageTransition.slideFromRight,
                       ),
                     );
@@ -122,7 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Navigator.push(
               context,
               PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => ContactsScreen(),
+                pageBuilder: (context, animation, secondaryAnimation) => const ContactsScreen(),
                 transitionsBuilder: PageTransition.slideFromRight,
               ),
             );

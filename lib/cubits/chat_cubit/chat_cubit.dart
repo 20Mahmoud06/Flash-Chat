@@ -2,9 +2,10 @@ import 'dart:async';
 import 'package:bloc/bloc.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flash_chat_app/models/message_model.dart';
 import 'package:flash_chat_app/models/user_model.dart';
-import 'package:flash_chat_app/services/fcm_service.dart';
+import 'package:flash_chat_app/services/fcm_v1_sender.dart';
 import 'chat_state.dart';
 
 class ChatCubit extends Cubit<ChatState> {
@@ -15,7 +16,7 @@ class ChatCubit extends Cubit<ChatState> {
 
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-  final _fcmService = FcmService();
+
   StreamSubscription? _messagesSubscription;
 
   ChatCubit({
@@ -65,16 +66,13 @@ class ChatCubit extends Cubit<ChatState> {
     if (currentUser == null) return;
 
     Map<String, dynamic>? repliedTo;
-    String? replyingToSenderName;
     if (state is ChatLoaded && (state as ChatLoaded).replyingTo != null) {
       final replyingState = state as ChatLoaded;
       repliedTo = {
         'id': replyingState.replyingTo!.id,
-        'senderId': replyingState.replyingTo!.senderId,
         'senderName': replyingState.replyingToSenderName,
         'text': replyingState.replyingTo!.text,
       };
-      replyingToSenderName = replyingState.replyingToSenderName;
       setReplyingTo(null, null);
     }
 
@@ -135,47 +133,70 @@ class ChatCubit extends Cubit<ChatState> {
 
   Future<void> _sendDirectNotification(UserModel sender, String text) async {
     if (recipientId == null) return;
-    final doc = await _firestore.collection('users').doc(recipientId).get();
-    if (!doc.exists) return;
 
-    final tokens = List<String>.from(doc.data()?['fcmTokens'] ?? []);
-    for (final token in tokens) {
-      await _fcmService.sendPushMessageV1(
-        token: token,
-        title: '${sender.firstName} ${sender.lastName}',
-        body: text,
-        data: {"type": "chat", "senderId": sender.uid},
-      );
+    try {
+      final doc = await _firestore.collection('users').doc(recipientId).get();
+      if (!doc.exists) return;
+
+      final tokens = List<String>.from(doc.data()?['fcmTokens'] ?? []);
+
+      // Initialize the V1 Sender
+      final fcmSender = await FcmV1Sender.getInstance();
+
+      for (final token in tokens) {
+        await fcmSender.sendMessageToToken(
+          token: token,
+          title: '${sender.firstName} ${sender.lastName}',
+          body: text,
+          chatType: 'chat',      // Required for deep link
+          targetId: sender.uid,  // The Sender ID allows the receiver to open the chat
+          receiverId: recipientId, // Required for cleaning up dead tokens
+        );
+      }
+    } catch (e) {
+      debugPrint("Error sending direct notification: $e");
     }
   }
 
   Future<void> _sendGroupNotification(UserModel sender, String text) async {
-    final groupDoc = await _firestore.collection('groups').doc(chatId).get();
-    if (!groupDoc.exists) return;
+    try {
+      final groupDoc = await _firestore.collection('groups').doc(chatId).get();
+      if (!groupDoc.exists) return;
 
-    final membersUids = List<String>.from(groupDoc.data()?['membersUids'] ?? []);
-    // Don't send a notification to the person who sent the message
-    final recipientUids = membersUids.where((uid) => uid != sender.uid).toList();
+      final membersUids = List<String>.from(groupDoc.data()?['membersUids'] ?? []);
+      // Don't send a notification to the person who sent the message
+      final recipientUids = membersUids.where((uid) => uid != sender.uid).toList();
 
-    if (recipientUids.isEmpty) return;
+      if (recipientUids.isEmpty) return;
 
-    final usersSnapshot = await _firestore
-        .collection('users')
-        .where(FieldPath.documentId, whereIn: recipientUids)
-        .get();
+      // Initialize the V1 Sender
+      final fcmSender = await FcmV1Sender.getInstance();
 
-    for (final userDoc in usersSnapshot.docs) {
-      final tokens = List<String>.from(userDoc.data()['fcmTokens'] ?? []);
-      for (final token in tokens) {
-        await _fcmService.sendPushMessageV1(
-          token: token,
-          // For groups, the title is the group name
-          title: groupDoc.data()?['name'] ?? 'New Group Message',
-          // Body shows who sent the message
-          body: '${sender.firstName}: $text',
-          data: {"type": "group_chat", "groupId": chatId},
-        );
+      // Chunk the queries if > 10 items (Firestore limit for 'whereIn' is 10)
+      // For simplicity here we assume <= 10, but in prod you should chunk logic.
+      final usersSnapshot = await _firestore
+          .collection('users')
+          .where(FieldPath.documentId, whereIn: recipientUids.take(10).toList())
+          .get();
+
+      for (final userDoc in usersSnapshot.docs) {
+        final tokens = List<String>.from(userDoc.data()['fcmTokens'] ?? []);
+
+        for (final token in tokens) {
+          await fcmSender.sendMessageToToken(
+            token: token,
+            // For groups, the title is the group name
+            title: groupDoc.data()?['name'] ?? 'New Group Message',
+            // Body shows who sent the message
+            body: '${sender.firstName}: $text',
+            chatType: 'group_chat', // Required for deep link
+            targetId: chatId,       // The Group ID allows opening the group chat
+            receiverId: userDoc.id, // Required for cleaning up dead tokens for this specific user
+          );
+        }
       }
+    } catch (e) {
+      debugPrint("Error sending group notification: $e");
     }
   }
 
@@ -197,7 +218,7 @@ class ChatCubit extends Cubit<ChatState> {
       }
       batch.commit();
     }).catchError((e) {
-      print("Failed to update message status: $e");
+      debugPrint("Failed to update message status: $e");
     });
   }
 
@@ -230,10 +251,32 @@ class ChatCubit extends Cubit<ChatState> {
     await _performMessageUpdate(messageId, {'reactions.$uid': emoji});
   }
 
-  Future<void> removeReaction(String messageId) async {
-    final uid = _auth.currentUser!.uid;
-    await _performMessageUpdate(
-        messageId, {'reactions.$uid': FieldValue.delete()});
+  void removeReaction(String messageId) {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final collectionPath = isGroupChat ? 'groups' : 'chats';
+    FirebaseFirestore.instance
+        .collection(collectionPath)
+        .doc(chatId)
+        .collection('messages')
+        .doc(messageId)
+        .update({'reactions.$uid': FieldValue.delete()});
+
+    // Update local state (find the message in state.messages, remove the reaction, and emit ChatLoaded)
+    if (state is ChatLoaded) {
+      final loadedState = state as ChatLoaded;
+      final updatedMessages = List<MessageModel>.from(loadedState.messages);
+      final index = updatedMessages.indexWhere((m) => m.id == messageId);
+      if (index != -1) {
+        final updatedReactions = Map<String, String>.from(updatedMessages[index].reactions);
+        updatedReactions.remove(uid);
+        updatedMessages[index] = updatedMessages[index].copyWith(reactions: updatedReactions);
+        emit(ChatLoaded(
+          updatedMessages,
+          replyingTo: loadedState.replyingTo,
+          replyingToSenderName: loadedState.replyingToSenderName,
+        ));
+      }
+    }
   }
 
   void setReplyingTo(MessageModel? message, String? senderName) {

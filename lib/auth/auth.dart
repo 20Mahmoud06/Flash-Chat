@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../models/user_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -64,7 +65,7 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print(e);
+      debugPrint(e as String?);
       return null;
     }
   }
@@ -87,7 +88,7 @@ class AuthService {
       }
       return null;
     } catch (e) {
-      print('Google Sign-In error: $e');
+      debugPrint('Google Sign-In error: $e');
       return null;
     }
   }

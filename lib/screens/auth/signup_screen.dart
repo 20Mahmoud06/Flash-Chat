@@ -88,7 +88,7 @@ class _SignupScreenState extends State<SignupScreen> {
             Navigator.pushReplacement(
                 context,
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => HomeScreen(),
+                  pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
                   transitionsBuilder: PageTransition.slideFromRight,
                 ));
           } else {

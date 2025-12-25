@@ -24,6 +24,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _lastNameController;
   late final TextEditingController _phoneController;
   late final TextEditingController _emailController;
+  late final TextEditingController _bioController;
   String? _selectedEmoji;
 
   @override
@@ -33,6 +34,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _lastNameController = TextEditingController(text: widget.user.lastName);
     _phoneController = TextEditingController(text: widget.user.phoneNumber);
     _emailController = TextEditingController(text: widget.user.email);
+    _bioController = TextEditingController(text: widget.user.bio ?? '');
     _selectedEmoji = widget.user.avatarEmoji;
   }
 
@@ -42,6 +44,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _lastNameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -61,6 +64,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
 
+    final newBio = _bioController.text.trim();
     context.read<ProfileCubit>().updateUserProfile(
       originalUser: widget.user,
       newFirstName: _firstNameController.text.trim(),
@@ -68,6 +72,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       newPhone: _phoneController.text.trim(),
       newEmail: _emailController.text.trim(),
       newEmoji: _selectedEmoji,
+      newBio: newBio.isNotEmpty ? newBio : null,
     );
   }
 
@@ -142,6 +147,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   CustomTextFormField(controller: _phoneController, text: 'Phone Number', keyboardType: TextInputType.phone, validator: (v) => v!.trim().isEmpty ? 'Required' : null),
                   SizedBox(height: 16.h),
                   CustomTextFormField(controller: _emailController, text: 'Email Address', isEmail: true, validator: (v) => v!.trim().isEmpty ? 'Required' : null),
+                  SizedBox(height: 16.h),
+                  CustomTextFormField(
+                    controller: _bioController,
+                    text: 'Bio',
+                    hintText: 'Add your bio (optional)',
+                    minLines: 1,
+                    maxLines: 4,
+                    keyboardType: TextInputType.multiline,
+                    validator: (String? p1) {  },
+                  ),
                   SizedBox(height: 40.h),
                   state is ProfileLoading
                       ? const Center(child: CircularProgressIndicator(color: Colors.lightBlueAccent))

@@ -13,10 +13,10 @@ class SenderProfileScreen extends StatelessWidget {
       backgroundColor: Colors.grey.shade100,
       appBar: AppBar(
         title: CustomText(
-          text: "Contact Info",
-              textColor: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 20.sp),
+            text: "Contact Info",
+            textColor: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20.sp),
         backgroundColor: Colors.lightBlueAccent,
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -29,13 +29,13 @@ class SenderProfileScreen extends StatelessWidget {
               radius: 60.r,
               backgroundColor: Colors.lightBlue.shade50,
               child: CustomText(
-                text: user.avatarEmoji,
-                fontSize: 60.sp),
+                  text: user.avatarEmoji,
+                  fontSize: 60.sp),
             ),
             SizedBox(height: 20.h),
             CustomText(
-              text: '${user.firstName} ${user.lastName}',
-              fontSize: 24.sp, fontWeight: FontWeight.bold
+                text: '${user.firstName} ${user.lastName}',
+                fontSize: 24.sp, fontWeight: FontWeight.bold
             ),
             SizedBox(height: 20.h),
             _buildInfoCard(
@@ -50,6 +50,13 @@ class SenderProfileScreen extends StatelessWidget {
               subtitle: user.email,
               color: Colors.orange,
             ),
+            if (user.bio != null && user.bio!.isNotEmpty)
+              _buildInfoCard(
+                icon: Icons.info_outline,
+                title: "Bio",
+                subtitle: user.bio!,
+                color: Colors.lightBlue,
+              ),
           ],
         ),
       ),

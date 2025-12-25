@@ -10,6 +10,7 @@ class CustomText extends StatelessWidget {
     this.textAlign,
     this.maxLines,
     this.overflow,
+    this.textDirection,
   });
 
   final Color? textColor;
@@ -19,10 +20,12 @@ class CustomText extends StatelessWidget {
   final TextAlign? textAlign;
   final int? maxLines;
   final TextOverflow? overflow;
+  final TextDirection? textDirection;
 
   @override
   Widget build(BuildContext context) {
     return Text(
+      textDirection: textDirection,
       text,
       textAlign: textAlign,
       maxLines: maxLines,

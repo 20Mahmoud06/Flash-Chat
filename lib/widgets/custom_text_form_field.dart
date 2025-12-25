@@ -8,24 +8,30 @@ class CustomTextFormField extends StatefulWidget {
     required this.validator,
     this.onChanged,
     required this.text,
+    this.hintText,
     this.textInputAction,
     this.isPassword = false,
     this.isEmail = false,
     this.keyboardType,
     this.prefixIcon,
     this.enabled = true,
+    this.minLines,
+    this.maxLines,
   });
 
   final TextEditingController controller;
   final String? Function(String?) validator;
   final void Function(String)? onChanged;
   final String text;
+  final String? hintText;
   final TextInputAction? textInputAction;
   final bool isPassword;
   final bool isEmail;
   final TextInputType? keyboardType;
   final Widget? prefixIcon;
   final bool enabled;
+  final int? minLines;
+  final int? maxLines;
 
   @override
   State<CustomTextFormField> createState() => _CustomTextFormFieldState();
@@ -63,12 +69,14 @@ class _CustomTextFormFieldState extends State<CustomTextFormField> {
       keyboardType: widget.keyboardType ?? (widget.isEmail
           ? TextInputType.emailAddress
           : TextInputType.text),
-      textAlign: widget.prefixIcon == null ? TextAlign.center : TextAlign.start,
+      textAlign: (widget.prefixIcon == null && (widget.maxLines ?? 1) == 1) ? TextAlign.center : TextAlign.start,
       onChanged: widget.onChanged,
       controller: widget.controller,
       textInputAction: widget.textInputAction,
       validator: widget.validator,
       obscureText: _obscureText,
+      minLines: widget.minLines ?? 1,
+      maxLines: widget.maxLines ?? 1,
       decoration: InputDecoration(
         border: outlineInputBorder,
         enabledBorder: outlineInputBorder,
@@ -80,7 +88,7 @@ class _CustomTextFormFieldState extends State<CustomTextFormField> {
           borderSide: BorderSide(color: errorColor, width: 2.0.w),
         ),
         isDense: true,
-        hintText: widget.text,
+        hintText: widget.hintText ?? widget.text,
         hintStyle: TextStyle(color: hintColor),
         filled: true,
         fillColor: Colors.white,

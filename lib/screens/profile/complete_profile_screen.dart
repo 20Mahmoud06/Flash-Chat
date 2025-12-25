@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:quickalert/quickalert.dart';
-import '../../core/routes/route_names.dart';
 import '../../cubits/profile_cubit/profile_cubit.dart';
 import '../../cubits/profile_cubit/profile_state.dart';
 import '../../widgets/custom_button.dart';
@@ -117,7 +116,7 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
                     Navigator.pushReplacement(
                         context,
                         PageRouteBuilder(
-                          pageBuilder: (context, animation, secondaryAnimation) => HomeScreen(),
+                          pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
                           transitionsBuilder: PageTransition.slideFromRight,
                         ));
                   },

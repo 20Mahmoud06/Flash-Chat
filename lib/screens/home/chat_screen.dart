@@ -9,11 +9,12 @@ import 'package:flash_chat_app/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' as intl;
 import 'package:flutter/services.dart';
 import 'package:swipe_to/swipe_to.dart';
 import '../../cubits/chat_cubit/chat_cubit.dart';
 import '../../cubits/chat_cubit/chat_state.dart';
+import '../../services/active_chat.dart';
 import '../../widgets/page_transition.dart';
 import '../profile/group_info_screen.dart';
 
@@ -40,18 +41,25 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isLoadingMembers = false;
   bool _isLoadingMyUser = true;
 
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _messageKeys = {};
+
   @override
   void initState() {
     super.initState();
-    _isGroupChat = widget.group != null;
 
     final currentUser = FirebaseAuth.instance.currentUser!;
+
+    _isGroupChat = widget.group != null;
 
     if (_isGroupChat) {
       final group = widget.group!;
       _chatId = group.id;
       _chatName = group.name;
       _chatAvatar = group.avatarEmoji;
+
+      activeGroupId = group.id;
+
       _isLoadingMembers = true;
       _fetchGroupMembers(group.memberUids);
     } else {
@@ -60,9 +68,19 @@ class _ChatScreenState extends State<ChatScreen> {
       _chatId = uids.join('_');
       _chatName = "${contact.firstName} ${contact.lastName}";
       _chatAvatar = contact.avatarEmoji;
+
+      activeChatUserId = contact.uid;
     }
 
     _fetchMyUser();
+  }
+
+  @override
+  void dispose() {
+    activeChatUserId = null;
+    activeGroupId = null;
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchMyUser() async {
@@ -105,6 +123,19 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted) {
         setState(() => _isLoadingMembers = false);
       }
+    }
+  }
+
+  void scrollToMessage(String messageId) {
+    final key = _messageKeys[messageId];
+    final ctx = key?.currentContext;
+    if (ctx != null) {
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
     }
   }
 
@@ -223,7 +254,14 @@ class _ChatScreenState extends State<ChatScreen> {
                     if (state.messages.isEmpty) {
                       return const Center(child: CustomText(text: "Say hello! 👋"));
                     }
+                    final members = _isGroupChat
+                        ? _groupMembers
+                        : {
+                      FirebaseAuth.instance.currentUser!.uid: _myUser!,
+                      widget.contact!.uid: widget.contact!,
+                    };
                     return ListView.builder(
+                      controller: _scrollController,
                       reverse: true,
                       itemCount: state.messages.length,
                       itemBuilder: (context, index) {
@@ -244,13 +282,23 @@ class _ChatScreenState extends State<ChatScreen> {
                             ? (sender != null ? '${sender.firstName} ${sender.lastName}' : 'Unknown')
                             : (isMe ? 'You' : _chatName ?? 'Unknown');
 
+                        final key = _messageKeys[message.id] ??= GlobalKey();
+
                         final messageWidget = MessageBubble(
+                          key: key,
                           message: message,
                           isMe: isMe,
                           isGroup: _isGroupChat,
                           sender: sender,
                           senderAvatar: senderAvatar,
                           contactName: _chatName,
+                          members: members,
+                          onTapReplied: () {
+                            final repliedId = message.repliedTo?['id'] as String?;
+                            if (repliedId != null) {
+                              scrollToMessage(repliedId);
+                            }
+                          },
                         );
 
                         if (message.isDeleted) {
@@ -282,9 +330,11 @@ class MessageBubble extends StatelessWidget {
   final MessageModel message;
   final bool isMe;
   final bool isGroup;
-  final UserModel? sender; // Sender info for group chats
-  final String senderAvatar; // Avatar for the sender of this message
+  final UserModel? sender;
+  final String senderAvatar;
   final String? contactName;
+  final Map<String, UserModel> members;
+  final VoidCallback? onTapReplied;
 
   const MessageBubble({
     super.key,
@@ -294,6 +344,8 @@ class MessageBubble extends StatelessWidget {
     this.sender,
     required this.senderAvatar,
     this.contactName,
+    required this.members,
+    this.onTapReplied,
   });
 
   @override
@@ -350,40 +402,63 @@ class MessageBubble extends StatelessWidget {
                             bottomLeft: isMe ? Radius.circular(18.r) : Radius.circular(4.r),
                             bottomRight: isMe ? Radius.circular(4.r) : Radius.circular(18.r),
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (message.repliedTo != null)
-                              Container(
-                                margin: EdgeInsets.only(bottom: 8.h),
-                                padding: EdgeInsets.all(8.w),
-                                decoration: BoxDecoration(
-                                  color: Colors.lightBlue.shade50,
-                                  borderRadius: BorderRadius.circular(8.r),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    CustomText(
-                                      text: message.repliedTo!['senderName'] ?? 'Unknown',
-                                      fontSize: 12.sp,
-                                      textColor: Colors.grey.shade800,
-                                      fontWeight: FontWeight.bold,
+                              GestureDetector(
+                                onTap: onTapReplied,
+                                child: Container(
+                                  margin: EdgeInsets.only(bottom: 8.h),
+                                  padding: EdgeInsets.all(8.w),
+                                  decoration: BoxDecoration(
+                                    color: Colors.lightBlue.shade50.withOpacity(0.8),
+                                    borderRadius: BorderRadius.circular(8.r),
+                                    border: Border(
+                                      left: BorderSide(
+                                        color: isMe ? Colors.white : Colors.lightBlueAccent,
+                                        width: 4.w,
+                                      ),
                                     ),
-                                    CustomText(
-                                      text: message.repliedTo!['text'] ?? '',
-                                      fontSize: 13.sp,
-                                      textColor: Colors.grey.shade700,
-                                      maxLines: 3,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      CustomText(
+                                        text: message.repliedTo!['senderName'] ?? 'Unknown',
+                                        fontSize: 12.sp,
+                                        textColor: Colors.lightBlueAccent,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      CustomText(
+                                        text: message.repliedTo!['text'] ?? '',
+                                        fontSize: 13.sp,
+                                        textColor: Colors.grey.shade700,
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             message.isDeleted
                                 ? Text("This message was deleted", style: TextStyle(fontStyle: FontStyle.italic, color: textColor.withOpacity(0.7)))
-                                : CustomText(text: message.text, textColor: textColor, fontSize: 15.sp),
+                                : CustomText(
+                              text: message.text,
+                              textColor: textColor,
+                              fontSize: 15.sp,
+                              textDirection: intl.Bidi.detectRtlDirectionality(message.text)
+                                  ? TextDirection.rtl
+                                  : TextDirection.ltr,
+                            ),
                             SizedBox(height: 4.h),
                             Row(
                               mainAxisSize: MainAxisSize.min,
@@ -391,7 +466,7 @@ class MessageBubble extends StatelessWidget {
                                 if (message.isEdited)
                                   CustomText(text: "Edited · ", textColor: textColor.withOpacity(0.7), fontSize: 11.sp),
                                 Text(
-                                  DateFormat('h:mm a').format(message.timestamp.toDate()),
+                                  intl.DateFormat('h:mm a').format(message.timestamp.toDate()),
                                   style: TextStyle(color: textColor.withOpacity(0.7), fontSize: 11.sp),
                                 ),
                                 if (isMe && !message.isDeleted) ...[
@@ -409,19 +484,22 @@ class MessageBubble extends StatelessWidget {
                       ),
                       if (message.reactions.isNotEmpty)
                         Positioned(
-                          bottom: -15.h,
+                          bottom: -12.h,
                           left: 0,
                           right: 0,
                           child: Center(
-                            child: Container(
-                              padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade200,
-                                borderRadius: BorderRadius.circular(12.r),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
+                            child: GestureDetector(
+                              onTap: () => _showReactionsDialog(context),
+                              child: Container(
+                                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, spreadRadius: 1)],
+                                ),
+                                child: CustomText(text: message.reactions.values.toSet().join(''),
+                                    fontSize: 14.sp),
                               ),
-                              child: CustomText(text: message.reactions.values.toSet().join(''),
-                                  fontSize: 14.sp),
                             ),
                           ),
                         ),
@@ -441,6 +519,43 @@ class MessageBubble extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showReactionsDialog(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser!;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15.r)),
+        title: const CustomText(text: "Reactions", fontWeight: FontWeight.bold, textColor: Colors.black),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: message.reactions.length,
+            itemBuilder: (context, index) {
+              final uid = message.reactions.keys.elementAt(index);
+              final emoji = message.reactions[uid]!;
+              final user = members[uid];
+              final name = (uid == currentUser.uid)
+                  ? 'You'
+                  : (user != null ? '${user.firstName} ${user.lastName}' : 'Unknown');
+              return ListTile(
+                leading: CustomText(text: emoji, fontSize: 20.sp),
+                title: CustomText(text: name),
+              );
+            },
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.lightBlueAccent),
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const CustomText(text: "OK", fontWeight: FontWeight.bold, textColor: Colors.white),
+          ),
+        ],
       ),
     );
   }
@@ -474,7 +589,11 @@ class MessageBubble extends StatelessWidget {
                       ...quickReactions.map((emoji) {
                         return GestureDetector(
                           onTap: () {
-                            chatCubit.updateReaction(message.id, emoji);
+                            if (currentReaction == emoji) {
+                              chatCubit.removeReaction(message.id);
+                            } else {
+                              chatCubit.updateReaction(message.id, emoji);
+                            }
                             Navigator.pop(ctx);
                           },
                           child: Container(
@@ -492,7 +611,11 @@ class MessageBubble extends StatelessWidget {
                         onPressed: () {
                           Navigator.pop(ctx);
                           _showEmojiPicker(context, (selectedEmoji) {
-                            chatCubit.updateReaction(message.id, selectedEmoji);
+                            if (currentReaction == selectedEmoji) {
+                              chatCubit.removeReaction(message.id);
+                            } else {
+                              chatCubit.updateReaction(message.id, selectedEmoji);
+                            }
                           });
                         },
                       )
@@ -520,7 +643,7 @@ class MessageBubble extends StatelessWidget {
                           children: [
                             Icon(Icons.check_circle, color: Colors.white, size: 20.sp),
                             SizedBox(width: 12.w),
-                            CustomText(text: 'Message copied to clipboard'),
+                            const CustomText(text: 'Message copied to clipboard'),
                           ],
                         ),
                         backgroundColor: Colors.lightBlueAccent,
@@ -605,7 +728,7 @@ class MessageBubble extends StatelessWidget {
             ListTile(
               leading: Icon(statusIcon, color: statusColor),
               title: CustomText(text: statusText),
-              subtitle: Text(DateFormat.yMMMd().add_jm().format(message.timestamp.toDate())),
+              subtitle: Text(intl.DateFormat.yMMMd().add_jm().format(message.timestamp.toDate())),
             ),
           ],
         ),
@@ -642,6 +765,9 @@ class MessageBubble extends StatelessWidget {
           controller: controller,
           style: const TextStyle(color: Colors.black
           ),
+          textDirection: intl.Bidi.detectRtlDirectionality(controller.text)
+              ? TextDirection.rtl
+              : TextDirection.ltr,
         ),
         actions: [
           TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const CustomText(text: "Cancel",textColor: Colors.black)),
@@ -697,11 +823,13 @@ class MessageComposer extends StatefulWidget {
 class _MessageComposerState extends State<MessageComposer> {
   final _controller = TextEditingController();
   UserModel? _sender;
+  TextDirection _textDirection = TextDirection.ltr;
 
   @override
   void initState() {
     super.initState();
     _loadSenderUser();
+    _controller.addListener(_updateTextDirection);
   }
 
   Future<void> _loadSenderUser() async {
@@ -717,12 +845,31 @@ class _MessageComposerState extends State<MessageComposer> {
     }
   }
 
+  void _updateTextDirection() {
+    final text = _controller.text.trim();
+    if (text.isNotEmpty) {
+      setState(() {
+        _textDirection = intl.Bidi.detectRtlDirectionality(text)
+            ? TextDirection.rtl
+            : TextDirection.ltr;
+      });
+    }
+  }
+
   void _sendMessage() {
     final text = _controller.text.trim();
     if (text.isEmpty || _sender == null) return;
 
     context.read<ChatCubit>().sendMessage(text, _sender!);
     _controller.clear();
+    _textDirection = TextDirection.ltr;
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_updateTextDirection);
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
@@ -793,21 +940,24 @@ class _MessageComposerState extends State<MessageComposer> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        textCapitalization: TextCapitalization.sentences,
-                        keyboardType: TextInputType.multiline,
-                        minLines: 1,
-                        maxLines: 6,
-                        decoration: InputDecoration(
-                          hintText: 'Type a message...',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(20.r),
-                              borderSide: BorderSide.none),
-                          filled: true,
-                          fillColor: Colors.grey.shade200,
-                          contentPadding:
-                          EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                      child: Directionality(
+                        textDirection: _textDirection,
+                        child: TextField(
+                          controller: _controller,
+                          textCapitalization: TextCapitalization.sentences,
+                          keyboardType: TextInputType.multiline,
+                          minLines: 1,
+                          maxLines: 6,
+                          decoration: InputDecoration(
+                            hintText: 'Type a message...',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(20.r),
+                                borderSide: BorderSide.none),
+                            filled: true,
+                            fillColor: Colors.grey.shade200,
+                            contentPadding:
+                            EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
+                          ),
                         ),
                       ),
                     ),
