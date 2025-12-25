@@ -76,7 +76,7 @@ Add your GoogleService-Info.plist (iOS)
 📱 Download the App
 
 Try the latest version of Flash Chat here 👇
-🔗 Download Flash Chat ([Google Drive](https://drive.google.com/file/d/1Hggox7Wpu3xOoO6lEsPQaKVzA31ULsPT/view?usp=drive_link))
+🔗 Download Flash Chat ([Google Drive](https://drive.google.com/file/d/18byzM-ruDVvW1SLYhBsVDn7RnEunv3z9/view?usp=drive_link))
 
 
 This project is licensed under the MIT License.
