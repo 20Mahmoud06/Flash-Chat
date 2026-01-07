@@ -114,8 +114,7 @@ ios/Runner/GoogleService-Info.plist
 
 Try the latest version of Flash Chat here 👇
 
-🔗 Download Flash Chat
-(https://drive.google.com/file/d/1k_HgtMCcCi-pSAxAABEjh3DnVKu7jWK-/view?usp=drive_link)
+🔗(Download Flash Chat)(https://drive.google.com/file/d/1k_HgtMCcCi-pSAxAABEjh3DnVKu7jWK-/view?usp=drive_link)
 
 🔐 Security Note
 
