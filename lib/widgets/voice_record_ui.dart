@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/voice_recorder_service.dart';
 
 class VoiceRecordUI extends StatefulWidget {
@@ -37,9 +38,31 @@ class _VoiceRecordUIState extends State<VoiceRecordUI>
   }
 
   Future<void> _startRecording() async {
-    await _recorder.start();
-    _startTimer();
-    _waveController.repeat(reverse: true);
+    final status = await Permission.microphone.request();
+    if (status != PermissionStatus.granted) {
+      // Optionally show a message to the user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required to record audio.')),
+        );
+      }
+      widget.onCancel();
+      return;
+    }
+
+    try {
+      await _recorder.start();
+      _startTimer();
+      _waveController.repeat(reverse: true);
+    } catch (e) {
+      // Handle recording start error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start recording: $e')),
+        );
+      }
+      widget.onCancel();
+    }
   }
 
   void _startTimer() {
@@ -51,31 +74,62 @@ class _VoiceRecordUIState extends State<VoiceRecordUI>
   }
 
   Future<void> _pauseResume() async {
-    if (_isPaused) {
-      await _recorder.resume();
-      _startTimer();
-      _waveController.repeat(reverse: true);
-    } else {
-      await _recorder.pause();
-      _timer?.cancel();
-      _waveController.stop();
+    try {
+      if (_isPaused) {
+        await _recorder.resume();
+        _startTimer();
+        _waveController.repeat(reverse: true);
+      } else {
+        await _recorder.pause();
+        _timer?.cancel();
+        _waveController.stop();
+      }
+      setState(() => _isPaused = !_isPaused);
+    } catch (e) {
+      // Handle pause/resume error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error during pause/resume: $e')),
+        );
+      }
     }
-    setState(() => _isPaused = !_isPaused);
   }
 
   Future<void> _send() async {
     _timer?.cancel();
     _waveController.stop();
-    final file = await _recorder.stop();
-    if (file != null) {
-      widget.onSend(file, _seconds);
+    try {
+      final file = await _recorder.stop();
+      if (file != null) {
+        widget.onSend(file, _seconds);
+      } else {
+        // Handle null file
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No recording file available to send.')),
+          );
+        }
+        widget.onCancel();
+      }
+    } catch (e) {
+      // Handle stop error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to stop recording: $e')),
+        );
+      }
+      widget.onCancel();
     }
   }
 
   Future<void> _cancel() async {
     _timer?.cancel();
     _waveController.stop();
-    await _recorder.stop();
+    try {
+      await _recorder.stop();
+    } catch (e) {
+      // Ignore errors on cancel
+    }
     widget.onCancel();
   }
 
@@ -83,6 +137,8 @@ class _VoiceRecordUIState extends State<VoiceRecordUI>
   void dispose() {
     _timer?.cancel();
     _waveController.dispose();
+    // Ensure recorder is stopped if not already
+    _recorder.stop().catchError((_) {}); // Ignore errors
     super.dispose();
   }
 
@@ -118,19 +174,23 @@ class _VoiceRecordUIState extends State<VoiceRecordUI>
                 builder: (context, constraints) {
                   final availableWidth = constraints.maxWidth;
                   const numBars = 20;
-                  final barWidth = min(3.0, availableWidth / numBars);
+                  final barWidth = min(3.0, availableWidth / (numBars * 1.5));
+                  final barSpacing = barWidth / 2; // Proportional spacing to fit
                   return Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: List.generate(numBars, (index) {
                       final phase = (index / (numBars - 1)) * 2 * pi;
                       final heightFactor = (sin(phase + _waveController.value * 2 * pi) + 1) / 2;
-                      return Container(
-                        width: barWidth,
-                        height: 8 + 24 * heightFactor,
-                        decoration: BoxDecoration(
-                          color: waveColor.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(barWidth / 2),
+                      return Padding(
+                        padding: EdgeInsets.symmetric(horizontal: barSpacing / 2),
+                        child: Container(
+                          width: barWidth,
+                          height: 8 + 24 * heightFactor,
+                          decoration: BoxDecoration(
+                            color: waveColor.withOpacity(0.8),
+                            borderRadius: BorderRadius.circular(barWidth / 2),
+                          ),
                         ),
                       );
                     }),
