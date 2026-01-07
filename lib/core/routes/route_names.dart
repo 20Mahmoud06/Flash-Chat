@@ -14,4 +14,9 @@ class RouteNames {
   static const String chatPage = '/chatPage';
   static const String createGroupPage = '/createGroupPage';
   static const String groupChatPage = '/groupChatPage';
+  static const String voiceCallPage = '/voiceCallPage';
+  static const String videoCallPage = '/videoCallPage';
+  static const String editGroupPage = '/editGroupPage';
+  static const String editPagePage = '/editPagePage';
+
 }

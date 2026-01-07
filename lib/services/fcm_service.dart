@@ -4,14 +4,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart'; // Add this import for addPostFrameCallback
+import 'package:flutter/scheduler.dart';
+import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_local_notifications/src/platform_specifics/android/enums.dart' as notifEnums; // New import for alias
+import 'package:flutter_local_notifications/src/platform_specifics/android/enums.dart' as notifEnums;
 import '../core/routes/navigation_service.dart';
 import '../core/routes/route_names.dart';
 import '../models/user_model.dart';
 import '../models/group_model.dart';
 import 'active_chat.dart';
+import '../utils/callkit_helper.dart';
+import 'call_service.dart';
+import 'deep_link_service.dart';
 
 class FcmService {
   final _fcm = FirebaseMessaging.instance;
@@ -19,48 +23,62 @@ class FcmService {
   final _auth = FirebaseAuth.instance;
   final _local = FlutterLocalNotificationsPlugin();
 
-  static const String channelId = 'flash_chat_custom_v1';
+  static const String channelId = 'flash_chat_custom_v10';
   static const String channelName = 'Flash Chat Messages';
-  static const String soundFileName = 'alert';
 
   static const AndroidNotificationChannel chatChannel =
   AndroidNotificationChannel(
     channelId,
     channelName,
-    importance: notifEnums.Importance.max, // Use alias
+    description: 'Notifications for chat messages',
+    importance: notifEnums.Importance.max,
     playSound: true,
+    enableVibration: true,
   );
 
   // ---------------- INIT ----------------
 
   Future<void> initializeFCM() async {
-    final settings = await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    try {
+      final settings = await _fcm.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
 
-    if (settings.authorizationStatus != AuthorizationStatus.authorized) return;
+      if (settings.authorizationStatus != AuthorizationStatus.authorized) return;
 
-    await _initLocal();
-    await _saveToken();
-    await _setupListeners();
+      await _initLocal();
+      await _saveToken();
+      await _setupListeners();
+    } catch (e) {
+      debugPrint('⚠️ FCM init failed (non-fatal): $e');
+    }
   }
 
   Future<void> _initLocal() async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const darwinInit = DarwinInitializationSettings();
-    const initSettings =
-    InitializationSettings(android: androidInit, iOS: darwinInit);
+    const darwinInit = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: darwinInit,
+    );
+
+    final androidPlugin = _local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+
+    await androidPlugin?.requestNotificationsPermission();
 
     await _local.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) async {
         if (response.actionId == 'REPLY') {
           final text = response.input;
-          if (text != null &&
-              text.isNotEmpty &&
-              response.payload != null) {
+          if (text != null && text.isNotEmpty && response.payload != null) {
             await _handleInlineReply(
               jsonDecode(response.payload!),
               text,
@@ -72,22 +90,38 @@ class FcmService {
       },
     );
 
-    final androidPlugin =
-    _local.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    const channel = AndroidNotificationChannel(
+      channelId,
+      channelName,
+      description: 'Notifications for chat messages',
+      importance: notifEnums.Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
 
-    await androidPlugin?.createNotificationChannel(chatChannel);
+    await androidPlugin?.createNotificationChannel(channel);
   }
 
   Future<void> _saveToken() async {
-    final token = await _fcm.getToken();
-    final uid = _auth.currentUser?.uid;
-    if (token != null && uid != null) {
-      await _firestore.collection('users').doc(uid).set({
-        'fcmTokens': FieldValue.arrayUnion([token])
-      }, SetOptions(merge: true));
+    for (int i = 0; i < 3; i++) {
+      try {
+        final token = await _fcm.getToken();
+        final uid = _auth.currentUser?.uid;
+
+        if (token != null && uid != null) {
+          await _firestore.collection('users').doc(uid).set({
+            'fcmTokens': FieldValue.arrayUnion([token])
+          }, SetOptions(merge: true));
+        }
+        break;
+      }
+      catch (e) {
+        debugPrint('⚠️ FCM token not available yet: $e');
+        await Future.delayed(Duration(seconds: 2));
+      }
     }
   }
+
 
   // ---------------- LISTENERS ----------------
 
@@ -99,12 +133,48 @@ class FcmService {
       sound: false,
     );
 
-    FirebaseMessaging.onMessage.listen((message) {
+    FirebaseMessaging.onMessage.listen((message) async {
       final data = message.data;
-      if (data['type'] == 'chat' &&
-          data['senderId'] == activeChatUserId) return;
-      if (data['type'] == 'group_chat' &&
-          data['groupId'] == activeGroupId) return;
+
+      if (data['type'] == 'call') {
+        final callId = data['callId'];
+        if (callId == null) return;
+
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls.any((c) => c['id'] == callId)) return;
+
+        final extra = <String, dynamic>{
+          'callId': callId,
+          'isVideo': data['isVideo'] == 'true',
+          'callerId': data['callerId'],
+          'callerName': data['callerName'],
+          'isGroup': data['isGroup'] == 'true',
+          if (data.containsKey('groupId')) 'groupId': data['groupId'],
+          if (data.containsKey('groupName')) 'groupName': data['groupName'],
+          if (data.containsKey('receiverId')) 'receiverId': data['receiverId'],
+          if (data.containsKey('contactUid')) 'contactUid': data['contactUid'],
+          if (data.containsKey('groupBio')) 'groupBio': data['groupBio'],
+        };
+        await showIncomingCall(
+          callerName: data['callerName'] ?? 'Unknown',
+          isVideo: data['isVideo'] == 'true',
+          callId: callId,
+          extra: extra,
+        );
+        CallService.addCallStatusListener(callId);
+        return;
+      }
+
+      // 🔕 Ignore chat if already open (existing code)
+      if (data['type'] == 'chat' && data['senderId'] == activeChatUserId) {
+        return;
+      }
+      // 🔕 Ignore group chat if already open
+      if (data['type'] == 'group_chat' && data['groupId'] == activeGroupId) {
+        return;
+      }
+
+      // ✅ Only normal messages reach here
       _showNotification(message);
     });
 
@@ -130,19 +200,29 @@ class FcmService {
     final androidDetails = AndroidNotificationDetails(
       chatChannel.id,
       chatChannel.name,
-      importance: notifEnums.Importance.max, // Use alias
-      priority: notifEnums.Priority.high, // Use alias
+      channelDescription: chatChannel.description,
+      importance: notifEnums.Importance.max,
+      priority: notifEnums.Priority.high,
       icon: '@drawable/ic_notification',
+      playSound: true,
+      enableVibration: true,
+      styleInformation: const DefaultStyleInformation(true, true),
+    );
 
-      // 🚨 DO NOT use BigTextStyle on MIUI
-      styleInformation: DefaultStyleInformation(true, true),
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
     );
 
     await _local.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       title,
       body,
-      NotificationDetails(android: androidDetails),
+      NotificationDetails(
+        android: androidDetails,
+        iOS: iosDetails,
+      ),
       payload: jsonEncode(data),
     );
   }
@@ -150,12 +230,21 @@ class FcmService {
   // ---------------- TAP HANDLING ----------------
 
   Future<void> _handleTap(Map<String, dynamic> data) async {
+    debugPrint('📲 Notification tapped: ${data['type']}');
+
+    if (_auth.currentUser == null) {
+      debugPrint('❌ No user logged in');
+      return;
+    }
+
+    if (data['type'] == 'call') {
+      DeepLinkService().handleNotificationTap(data);
+      return;
+    }
+
     await _waitForNavigator();
 
-    if (_auth.currentUser == null) return;
-
     try {
-      // Fetch doc asynchronously, then navigate in post-frame callback
       if (data['type'] == 'chat') {
         final senderId = data['senderId'];
         if (senderId == null) return;
@@ -194,9 +283,12 @@ class FcmService {
 
   Future<void> _waitForNavigator() async {
     int attempts = 0;
-    while (navigatorKey.currentState == null && attempts < 50) {
+    while (navigatorKey.currentState == null && attempts < 200) {
       await Future.delayed(const Duration(milliseconds: 100));
       attempts++;
+    }
+    if (navigatorKey.currentState == null) {
+      debugPrint('Navigator timed out for deep link');
     }
   }
 

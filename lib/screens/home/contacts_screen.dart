@@ -7,7 +7,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../models/user_model.dart';
 import 'create_group_screen.dart';
 import '../home/chat_screen.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});

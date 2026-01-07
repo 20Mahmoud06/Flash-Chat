@@ -27,6 +27,11 @@ class ChatLoaded extends ChatState {
   List<Object?> get props => [messages, replyingTo, replyingToSenderName];
 }
 
+class ChatUploading extends ChatState {
+  final double progress;
+  const ChatUploading(this.progress);
+}
+
 class ChatError extends ChatState {
   final String message;
 

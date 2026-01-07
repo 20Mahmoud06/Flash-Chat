@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:bloc/bloc.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -6,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flash_chat_app/models/message_model.dart';
 import 'package:flash_chat_app/models/user_model.dart';
 import 'package:flash_chat_app/services/fcm_v1_sender.dart';
+import '../../services/cloudinary_service.dart';
+import '../../utils/cloudinary_config.dart';
 import 'chat_state.dart';
 
 class ChatCubit extends Cubit<ChatState> {
@@ -13,6 +16,8 @@ class ChatCubit extends Cubit<ChatState> {
   final bool isGroupChat;
   final String? recipientId;
   final UserModel? recipient;
+  DocumentSnapshot? _lastMessageDoc;
+  bool _hasMore = true;
 
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
@@ -30,34 +35,73 @@ class ChatCubit extends Cubit<ChatState> {
     _listenToMessages();
   }
 
-  void _listenToMessages() {
-    emit(ChatLoading());
+  Future<void> loadMoreMessages() async {
+    if (!_hasMore || _lastMessageDoc == null) return;
+
     final collectionPath = isGroupChat ? 'groups' : 'chats';
-    final messagesRef = _firestore
+
+    final snapshot = await _firestore
         .collection(collectionPath)
         .doc(chatId)
         .collection('messages')
-        .orderBy('timestamp', descending: true);
+        .orderBy('timestamp', descending: true)
+        .startAfterDocument(_lastMessageDoc!)
+        .limit(30)
+        .get();
 
-    _messagesSubscription = messagesRef.snapshots().listen((snapshot) {
+    if (snapshot.docs.isEmpty) {
+      _hasMore = false;
+      return;
+    }
+
+    _lastMessageDoc = snapshot.docs.last;
+
+    final olderMessages =
+    snapshot.docs.map((e) => MessageModel.fromFirestore(e)).toList();
+
+    if (state is ChatLoaded) {
+      emit(ChatLoaded(
+        [...(state as ChatLoaded).messages, ...olderMessages],
+        replyingTo: (state as ChatLoaded).replyingTo,
+        replyingToSenderName: (state as ChatLoaded).replyingToSenderName,
+      ));
+    }
+  }
+
+  void _listenToMessages() {
+    emit(ChatLoading());
+
+    final collectionPath = isGroupChat ? 'groups' : 'chats';
+
+    final query = _firestore
+        .collection(collectionPath)
+        .doc(chatId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .limit(30);
+
+    _messagesSubscription = query.snapshots().listen((snapshot) {
+      if (snapshot.docs.isNotEmpty) {
+        _lastMessageDoc = snapshot.docs.last;
+      }
+
       final messages = snapshot.docs
           .map((doc) => MessageModel.fromFirestore(doc))
           .toList();
-      if (state is ChatLoaded) {
-        emit(ChatLoaded(
-          messages,
-          replyingTo: (state as ChatLoaded).replyingTo,
-          replyingToSenderName: (state as ChatLoaded).replyingToSenderName,
-        ));
-      } else {
-        emit(ChatLoaded(messages));
-      }
-      // Only mark messages as seen in one-on-one chats
+
+      emit(ChatLoaded(
+        messages,
+        replyingTo: state is ChatLoaded ? (state as ChatLoaded).replyingTo : null,
+        replyingToSenderName: state is ChatLoaded
+            ? (state as ChatLoaded).replyingToSenderName
+            : null,
+      ));
+
       if (!isGroupChat) {
         _markMessagesAsSeen();
       }
-    }, onError: (error) {
-      emit(ChatError("Failed to load messages: $error"));
+    }, onError: (e) {
+      emit(ChatError('Failed to load messages: $e'));
     });
   }
 
@@ -148,9 +192,9 @@ class ChatCubit extends Cubit<ChatState> {
           token: token,
           title: '${sender.firstName} ${sender.lastName}',
           body: text,
-          chatType: 'chat',      // Required for deep link
-          targetId: sender.uid,  // The Sender ID allows the receiver to open the chat
-          receiverId: recipientId, // Required for cleaning up dead tokens
+          chatType: 'chat',
+          targetId: sender.uid,
+          receiverId: recipientId,
         );
       }
     } catch (e) {
@@ -185,13 +229,11 @@ class ChatCubit extends Cubit<ChatState> {
         for (final token in tokens) {
           await fcmSender.sendMessageToToken(
             token: token,
-            // For groups, the title is the group name
             title: groupDoc.data()?['name'] ?? 'New Group Message',
-            // Body shows who sent the message
             body: '${sender.firstName}: $text',
-            chatType: 'group_chat', // Required for deep link
-            targetId: chatId,       // The Group ID allows opening the group chat
-            receiverId: userDoc.id, // Required for cleaning up dead tokens for this specific user
+            chatType: 'group_chat',
+            targetId: chatId,
+            receiverId: userDoc.id,
           );
         }
       }
@@ -261,7 +303,6 @@ class ChatCubit extends Cubit<ChatState> {
         .doc(messageId)
         .update({'reactions.$uid': FieldValue.delete()});
 
-    // Update local state (find the message in state.messages, remove the reaction, and emit ChatLoaded)
     if (state is ChatLoaded) {
       final loadedState = state as ChatLoaded;
       final updatedMessages = List<MessageModel>.from(loadedState.messages);
@@ -286,6 +327,165 @@ class ChatCubit extends Cubit<ChatState> {
         replyingTo: message,
         replyingToSenderName: senderName,
       ));
+    }
+  }
+
+  Future<void> sendImages(
+      List<File> images,
+      UserModel sender, {
+        String caption = '',
+      }) async {
+    if (images.isEmpty) return;
+
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final urls = <String>[];
+      double totalProgress = 0.0;
+      final totalFiles = images.length;
+
+      for (int i = 0; i < images.length; i++) {
+        final url = await CloudinaryService.uploadFileWithProgress(
+          file: images[i],
+          preset: CloudinaryConfig.imagePreset,
+          resourceType: 'image',
+          onProgress: (fileProgress) {
+            totalProgress = (i / totalFiles) + (fileProgress / totalFiles);
+            emit(ChatUploading(totalProgress));
+          },
+        );
+
+        urls.add(url);
+      }
+
+      await _sendMediaMessage(
+        sender: sender,
+        messageType: MessageType.image,
+        mediaUrls: urls,
+        caption: caption,
+        previewText: urls.length > 1 ? '📷 Photos' : '📷 Photo',
+      );
+    } catch (e) {
+      emit(ChatError('Failed to send images: $e'));
+    }
+  }
+
+  Future<void> sendVideo(
+      File video,
+      UserModel sender, {
+        String caption = '',
+      }) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final url = await CloudinaryService.uploadFileWithProgress(
+        file: video,
+        preset: CloudinaryConfig.videoPreset,
+        resourceType: 'video',
+        onProgress: (progress) {
+          emit(ChatUploading(progress));
+        },
+      );
+
+      await _sendMediaMessage(
+        sender: sender,
+        messageType: MessageType.video,
+        mediaUrls: [url],
+        caption: caption,
+        previewText: '🎥 Video',
+      );
+    } catch (e) {
+      emit(ChatError('Failed to send video: $e'));
+    }
+  }
+
+  Future<void> sendVoiceMessage(
+      File voiceFile,
+      int durationSeconds,
+      UserModel sender,
+      ) async {
+    final currentUser = _auth.currentUser;
+    if (currentUser == null) return;
+
+    try {
+      final url = await CloudinaryService.uploadFileWithProgress(
+        file: voiceFile,
+        preset: CloudinaryConfig.videoPreset,
+        resourceType: 'video',
+        onProgress: (progress) {
+          emit(ChatUploading(progress));
+        },
+      );
+
+      await _sendMediaMessage(
+        sender: sender,
+        messageType: MessageType.voice,
+        mediaUrls: [url],
+        voiceDuration: durationSeconds,
+        previewText: '🎤 Voice message',
+      );
+    } catch (e) {
+      emit(ChatError('Failed to send voice message: $e'));
+    }
+  }
+
+  Future<void> _sendMediaMessage({
+    required UserModel sender,
+    required MessageType messageType,
+    required List<String> mediaUrls,
+    int? voiceDuration,
+    String caption = '',
+    required String previewText,
+  }) async {
+    final currentUser = _auth.currentUser!;
+    final collectionPath = isGroupChat ? 'groups' : 'chats';
+
+    Map<String, dynamic>? repliedTo;
+    if (state is ChatLoaded && (state as ChatLoaded).replyingTo != null) {
+      final replyingState = state as ChatLoaded;
+      final replyText = replyingState.replyingTo!.text.isNotEmpty
+          ? replyingState.replyingTo!.text
+          : 'Media message';
+      repliedTo = {
+        'id': replyingState.replyingTo!.id,
+        'senderName': replyingState.replyingToSenderName,
+        'text': replyText,
+      };
+      setReplyingTo(null, null);
+    }
+
+    final messageData = {
+      'text': caption,
+      'senderId': currentUser.uid,
+      'senderName': '${sender.firstName} ${sender.lastName}',
+      if (!isGroupChat) 'recipientId': recipientId ?? '',
+      'timestamp': FieldValue.serverTimestamp(),
+      'status': 'sent',
+      'reactions': {},
+      'isDeleted': false,
+      'isEdited': false,
+      'messageType': messageType.name,
+      'mediaUrls': mediaUrls,
+      if (voiceDuration != null) 'voiceDuration': voiceDuration,
+      if (repliedTo != null) 'repliedTo': repliedTo,
+    };
+
+    final chatRef = _firestore.collection(collectionPath).doc(chatId);
+
+    await chatRef.collection('messages').add(messageData);
+
+    await chatRef.set({
+      'lastMessage': caption.isNotEmpty ? caption : previewText,
+      'lastMessageTimestamp': FieldValue.serverTimestamp(),
+      'lastSenderId': currentUser.uid,
+    }, SetOptions(merge: true));
+
+    if (isGroupChat) {
+      await _sendGroupNotification(sender, previewText);
+    } else {
+      await _sendDirectNotification(sender, previewText);
     }
   }
 

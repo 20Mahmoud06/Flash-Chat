@@ -12,7 +12,7 @@ import '../../cubits/auth_cubit/auth_state.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_form_field.dart';
 import '../../widgets/google_signin_button.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -39,9 +39,9 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
     if (_formKey.currentState!.validate()) {
       context.read<AuthCubit>().loginWithEmail(
-            _emailController.text.trim(),
-            _passwordController.text.trim(),
-          );
+        _emailController.text.trim(),
+        _passwordController.text.trim(),
+      );
     }
   }
 
@@ -111,7 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   return SingleChildScrollView(
                     child: ConstrainedBox(
                       constraints:
-                          BoxConstraints(minHeight: constraints.maxHeight),
+                      BoxConstraints(minHeight: constraints.maxHeight),
                       child: IntrinsicHeight(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -183,18 +183,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                   buttonColor: Colors.lightBlueAccent,
                                   child: isEmailLoading
                                       ? const SizedBox(
-                                          height: 24,
-                                          width: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
                                       : CustomText(
-                                          text: 'Log In',
-                                          textColor: Colors.white,
-                                          fontSize: 18.sp,
-                                        ),
+                                    text: 'Log In',
+                                    textColor: Colors.white,
+                                    fontSize: 18.sp,
+                                  ),
                                 );
                               },
                             ),
@@ -204,10 +204,10 @@ class _LoginScreenState extends State<LoginScreen> {
                               children: [
                                 Expanded(
                                     child:
-                                        Divider(color: Colors.grey.shade400)),
+                                    Divider(color: Colors.grey.shade400)),
                                 Padding(
                                   padding:
-                                      EdgeInsets.symmetric(horizontal: 8.0.w),
+                                  EdgeInsets.symmetric(horizontal: 8.0.w),
                                   child: CustomText(
                                       text: 'OR',
                                       textColor: Colors.grey,
@@ -215,7 +215,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 Expanded(
                                     child:
-                                        Divider(color: Colors.grey.shade400)),
+                                    Divider(color: Colors.grey.shade400)),
                               ],
                             ),
                             SizedBox(height: 12.0.h),
@@ -223,7 +223,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               text: 'Login with Google',
                               isLoading: _isGoogleLoading,
                               onPressed:
-                                  _isGoogleLoading ? null : _loginWithGoogle,
+                              _isGoogleLoading ? null : _loginWithGoogle,
                             ),
                             const Spacer(),
                             Row(

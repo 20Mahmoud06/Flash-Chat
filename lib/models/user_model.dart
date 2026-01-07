@@ -9,6 +9,7 @@ class UserModel extends Equatable {
   final String phoneNumber;
   final String avatarEmoji;
   final String? bio;
+  final String? fcmToken;
 
   const UserModel({
     required this.uid,
@@ -18,6 +19,7 @@ class UserModel extends Equatable {
     required this.phoneNumber,
     required this.avatarEmoji,
     this.bio,
+    this.fcmToken,
   });
 
   /// Factory constructor to create a UserModel from a Firestore document.
@@ -31,6 +33,7 @@ class UserModel extends Equatable {
       phoneNumber: data['phoneNumber'] ?? '',
       avatarEmoji: data['avatarEmoji'] ?? '👤',
       bio: data['bio'] as String?,
+      fcmToken: data['fcmToken'] as String?,
     );
   }
 
@@ -44,6 +47,7 @@ class UserModel extends Equatable {
       'phoneNumber': phoneNumber,
       'avatarEmoji': avatarEmoji,
       if (bio != null) 'bio': bio,
+      if (fcmToken != null) 'fcmToken': fcmToken,
     };
   }
 
@@ -55,6 +59,7 @@ class UserModel extends Equatable {
     String? phoneNumber,
     String? avatarEmoji,
     String? bio,
+    String? fcmToken,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -64,9 +69,13 @@ class UserModel extends Equatable {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       avatarEmoji: avatarEmoji ?? this.avatarEmoji,
       bio: bio ?? this.bio,
+      fcmToken: fcmToken ?? this.fcmToken,
     );
   }
 
+  String get fullName => '$firstName $lastName';
+
   @override
-  List<Object?> get props => [uid, email, firstName, lastName, phoneNumber, avatarEmoji, bio];
+  List<Object?> get props => [uid, email, firstName, lastName, phoneNumber, avatarEmoji, bio, fcmToken];
+
 }

@@ -8,7 +8,7 @@ import '../../cubits/profile_cubit/profile_state.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text.dart';
 import '../../widgets/custom_text_form_field.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 import '../home/home_screen.dart';
 import '../../models/user_model.dart';
 
@@ -51,12 +51,11 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
   void didChangeDependencies() {
     super.didChangeDependencies();
     final authUser = FirebaseAuth.instance.currentUser;
-    final profileUser = ModalRoute.of(context)?.settings.arguments as UserModel?;
 
-    if (profileUser != null && profileUser.firstName.isNotEmpty) {
+    if (widget.user != null && widget.user!.firstName.isNotEmpty) {
       _isGoogleUser = true;
-      _firstNameController.text = profileUser.firstName;
-      _lastNameController.text = profileUser.lastName;
+      _firstNameController.text = widget.user!.firstName;
+      _lastNameController.text = widget.user!.lastName;
     } else if (authUser != null && authUser.displayName != null && authUser.displayName!.isNotEmpty) {
       _isGoogleUser = true;
       final names = authUser.displayName!.split(' ');
@@ -143,11 +142,24 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
                           SizedBox(height: 8.h),
                           CustomText(text: 'Just a few more details to get you started.', textAlign: TextAlign.center, fontSize: 16.sp),
                           SizedBox(height: 32.h),
-                          CustomTextFormField(controller: _firstNameController, text: 'First Name', enabled: !_isGoogleUser, validator: (v) => v!.trim().isEmpty ? 'Please enter your first name' : null),
+                          CustomTextFormField(
+                              controller: _firstNameController,
+                              text: 'First Name',
+                              validator: (v) => v!.trim().isEmpty ? 'Please enter your first name' : null
+                          ),
                           SizedBox(height: 12.h),
-                          CustomTextFormField(controller: _lastNameController, text: 'Last Name', enabled: !_isGoogleUser, validator: (v) => v!.trim().isEmpty ? 'Please enter your last name' : null),
+                          CustomTextFormField(
+                              controller: _lastNameController,
+                              text: 'Last Name',
+                              validator: (String? p1) {  },
+                          ),
                           SizedBox(height: 12.h),
-                          CustomTextFormField(controller: _phoneController, text: 'Phone Number', keyboardType: TextInputType.phone, validator: (v) => v!.trim().isEmpty ? 'Please enter your phone number' : null),
+                          CustomTextFormField(
+                              controller: _phoneController,
+                              text: 'Phone Number',
+                              keyboardType: TextInputType.phone,
+                              validator: (v) => v!.trim().isEmpty ? 'Please enter your phone number' : null
+                          ),
                           SizedBox(height: 24.h),
                           state is ProfileLoading
                               ? const Center(child: CircularProgressIndicator(color: Colors.lightBlueAccent))

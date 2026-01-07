@@ -10,7 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:intl/intl.dart';
 import 'package:lottie/lottie.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 import 'chat_screen.dart';
 import 'group_chat_screen.dart';
 

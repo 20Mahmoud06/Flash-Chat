@@ -71,7 +71,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   return SingleChildScrollView(
                     child: ConstrainedBox(
                       constraints:
-                          BoxConstraints(minHeight: constraints.maxHeight),
+                      BoxConstraints(minHeight: constraints.maxHeight),
                       child: IntrinsicHeight(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,

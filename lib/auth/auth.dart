@@ -11,7 +11,6 @@ class AuthService {
 
   User? get currentUser => _auth.currentUser;
 
-  // تحويل User إلى UserModel
   Future<UserModel> _firebaseUserToUserModel(User user) async {
     final doc = await _firestore.collection('users').doc(user.uid).get();
     if (doc.exists) {

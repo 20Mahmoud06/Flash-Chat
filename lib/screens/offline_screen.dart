@@ -5,8 +5,10 @@ class OfflineScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDarkMode = theme.brightness == Brightness.dark;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: theme.colorScheme.surface,
       body: Center(
         child: SingleChildScrollView(
           child: Padding(
@@ -14,7 +16,7 @@ class OfflineScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Image.asset('assets/no_wifi.png'),
+                Image.asset(isDarkMode ? 'assets/no_wifi_black.jpg' : 'assets/no_wifi.png'),
               ],
             ),
           ),

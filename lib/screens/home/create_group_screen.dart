@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../models/user_model.dart';
 import 'group_chat_screen.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 
 class CreateGroupScreen extends StatefulWidget {
   final List<UserModel> initialMembers;
@@ -19,6 +19,7 @@ class CreateGroupScreen extends StatefulWidget {
 
 class _CreateGroupScreenState extends State<CreateGroupScreen> {
   final _groupNameController = TextEditingController();
+  final _groupBioController = TextEditingController(); // Added for bio
   String _groupEmoji = '👥';
   bool _isCreating = false;
 
@@ -71,6 +72,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         adminUids: [currentUser.uid],
         createdBy: currentUser.uid,
         createdAt: Timestamp.now(),
+        bio: _groupBioController.text.trim().isEmpty ? null : _groupBioController.text.trim(), // Added bio
       );
 
       final docRef = await FirebaseFirestore.instance
@@ -85,8 +87,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         adminUids: newGroup.adminUids,
         createdBy: newGroup.createdBy,
         createdAt: newGroup.createdAt,
+        bio: newGroup.bio,
       );
-
 
       if (mounted) {
         Navigator.pushAndRemoveUntil(
@@ -116,91 +118,103 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const CustomText(text: 'New Group'),
-        titleTextStyle:
-        const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
-        backgroundColor: Colors.lightBlueAccent,
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          if (_isCreating)
-            const Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: Center(child: CircularProgressIndicator(color: Colors.white)),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: _createGroup,
-            )
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                GestureDetector(
-                  onTap: _pickEmoji,
-                  child: CircleAvatar(
-                    radius: 35.r,
-                    backgroundColor: Colors.lightBlue.shade50,
-                    child: CustomText(text: _groupEmoji,fontSize: 40.sp),
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: TextField(
-                    controller: _groupNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Group Name',
-                      hintText: 'e.g., Family, Work Team',
-                    ),
-                    textCapitalization: TextCapitalization.sentences,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 24.h),
-            CustomText(
-              text: '${widget.initialMembers.length + 1} Members',
-              fontSize: 16.sp,
-              fontWeight: FontWeight.bold,
-              textColor: Colors.grey.shade700,
-            ),
-            SizedBox(height: 8.h),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 4,
-                crossAxisSpacing: 8.w,
-                mainAxisSpacing: 8.h,
-              ),
-              itemCount: widget.initialMembers.length,
-              itemBuilder: (context, index) {
-                final member = widget.initialMembers[index];
-                return Column(
-                  children: [
-                    CircleAvatar(
-                        radius: 25.r,
-                        backgroundColor: Colors.grey.shade200,
-                        child: CustomText(text: member.avatarEmoji,
-                            fontSize: 24.sp)),
-                    SizedBox(height: 4.h),
-                    Text(
-                      member.firstName,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12.sp),
-                    ),
-                  ],
-                );
-              },
-            ),
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: const CustomText(text: 'New Group'),
+          titleTextStyle:
+          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
+          backgroundColor: Colors.lightBlueAccent,
+          iconTheme: const IconThemeData(color: Colors.white),
+          actions: [
+            if (_isCreating)
+              const Padding(
+                padding: EdgeInsets.only(right: 16.0),
+                child: Center(child: CircularProgressIndicator(color: Colors.white)),
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.check),
+                onPressed: _createGroup,
+              )
           ],
+        ),
+        body: SingleChildScrollView(
+          padding: EdgeInsets.all(16.w),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  GestureDetector(
+                    onTap: _pickEmoji,
+                    child: CircleAvatar(
+                      radius: 35.r,
+                      backgroundColor: Colors.lightBlue.shade50,
+                      child: CustomText(text: _groupEmoji,fontSize: 40.sp),
+                    ),
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: TextField(
+                      controller: _groupNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Group Name',
+                        hintText: 'e.g., Family, Work Team',
+                      ),
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16.h),
+              TextField(
+                controller: _groupBioController,
+                decoration: const InputDecoration(
+                  labelText: 'Group Bio (optional)',
+                  hintText: 'e.g., A group for family updates',
+                ),
+                maxLines: 3,
+              ),
+              SizedBox(height: 24.h),
+              CustomText(
+                text: '${widget.initialMembers.length + 1} Members',
+                fontSize: 16.sp,
+                fontWeight: FontWeight.bold,
+                textColor: Colors.grey.shade700,
+              ),
+              SizedBox(height: 8.h),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  crossAxisSpacing: 8.w,
+                  mainAxisSpacing: 8.h,
+                ),
+                itemCount: widget.initialMembers.length,
+                itemBuilder: (context, index) {
+                  final member = widget.initialMembers[index];
+                  return Column(
+                    children: [
+                      CircleAvatar(
+                          radius: 25.r,
+                          backgroundColor: Colors.grey.shade200,
+                          child: CustomText(text: member.avatarEmoji,
+                              fontSize: 24.sp)),
+                      SizedBox(height: 4.h),
+                      Text(
+                        member.firstName,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.sp),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

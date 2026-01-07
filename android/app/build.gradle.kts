@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.example.flash_chat_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -25,7 +25,7 @@ android {
     defaultConfig {
         applicationId = "com.example.flash_chat_app"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -49,4 +49,11 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("androidx.activity:activity:1.8.2")
+        force("androidx.activity:activity-ktx:1.8.2")
+    }
 }

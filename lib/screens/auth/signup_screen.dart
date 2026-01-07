@@ -11,7 +11,7 @@ import '../../cubits/auth_cubit/auth_state.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_text_form_field.dart';
 import '../../widgets/google_signin_button.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 import '../home/home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -26,7 +26,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
-      TextEditingController();
+  TextEditingController();
 
   bool _isGoogleLoading = false;
 
@@ -54,9 +54,9 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     context.read<AuthCubit>().signUpWithEmail(
-          _emailController.text.trim(),
-          _passwordController.text.trim(),
-        );
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
   }
 
   void _signInWithGoogle() {
@@ -198,18 +198,18 @@ class _SignupScreenState extends State<SignupScreen> {
                                   buttonColor: Colors.lightBlueAccent,
                                   child: isEmailLoading
                                       ? const SizedBox(
-                                          height: 24,
-                                          width: 24,
-                                          child: CircularProgressIndicator(
-                                            color: Colors.white,
-                                            strokeWidth: 2,
-                                          ),
-                                        )
+                                    height: 24,
+                                    width: 24,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
                                       : CustomText(
-                                          text: 'Sign Up',
-                                          textColor: Colors.white,
-                                          fontSize: 18.sp,
-                                        ),
+                                    text: 'Sign Up',
+                                    textColor: Colors.white,
+                                    fontSize: 18.sp,
+                                  ),
                                 );
                               },
                             ),
@@ -219,17 +219,17 @@ class _SignupScreenState extends State<SignupScreen> {
                               children: [
                                 Expanded(
                                     child:
-                                        Divider(color: Colors.grey.shade400)),
+                                    Divider(color: Colors.grey.shade400)),
                                 Padding(
                                     padding:
-                                        EdgeInsets.symmetric(horizontal: 8.0.w),
+                                    EdgeInsets.symmetric(horizontal: 8.0.w),
                                     child: CustomText(
                                         text: 'OR',
                                         textColor: Colors.grey,
                                         fontSize: 16.sp)),
                                 Expanded(
                                     child:
-                                        Divider(color: Colors.grey.shade400)),
+                                    Divider(color: Colors.grey.shade400)),
                               ],
                             ),
                             SizedBox(height: 12.0.h),
@@ -237,7 +237,7 @@ class _SignupScreenState extends State<SignupScreen> {
                               text: 'Sign up with Google',
                               isLoading: _isGoogleLoading,
                               onPressed:
-                                  _isGoogleLoading ? null : _signInWithGoogle,
+                              _isGoogleLoading ? null : _signInWithGoogle,
                             ),
                             const Spacer(),
                             Row(

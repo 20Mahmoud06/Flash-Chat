@@ -12,7 +12,7 @@ dependencies:
 
   # UI & Animation
   cupertino_icons: ^1.0.8
-  animated_text_kit: ^4.2.3
+  animated_text_kit: ^4.3.0
   flutter_screenutil: ^5.9.3
   lottie: ^3.1.2
   animate_do: ^3.3.4
@@ -27,12 +27,12 @@ dependencies:
 
   # Utilities
   flutter_offline: ^5.0.0
-  permission_handler: ^11.3.1 # Updated to latest stable version
+  permission_handler: ^12.0.1 # Updated to latest stable version
 
   # --- REPLACED acontacts_service ---
   flutter_contacts: ^1.1.8 # The new, modern contacts package
   intl: ^0.20.2
-  uuid: ^4.5.1
+  uuid: ^4.5.2
   path_provider: ^2.1.5
   firebase_messaging: ^15.1.0
   http: ^1.5.0
@@ -45,6 +45,15 @@ dependencies:
   bloc: any
   swipe_to: ^1.0.6
   bidi: ^2.0.13
+  agora_rtc_engine: ^6.5.3
+  flutter_callkit_incoming: ^3.0.0
+  agora_token_generator: ^1.0.0
+  image_picker: ^1.2.1
+  file_picker: ^8.0.7
+  record: ^6.0.0
+  just_audio: ^0.9.44
+  video_player: ^2.10.1
+  audioplayers: ^6.5.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

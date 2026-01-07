@@ -8,6 +8,7 @@ class GroupModel {
   final List<String> adminUids;
   final String createdBy;
   final Timestamp createdAt;
+  final String? bio;
 
   GroupModel({
     required this.id,
@@ -17,6 +18,7 @@ class GroupModel {
     required this.adminUids,
     required this.createdBy,
     required this.createdAt,
+    this.bio,
   });
 
   factory GroupModel.fromFirestore(DocumentSnapshot doc) {
@@ -29,6 +31,7 @@ class GroupModel {
       adminUids: List<String>.from(data['adminUids'] ?? []),
       createdBy: data['createdBy'] ?? '',
       createdAt: data['createdAt'] ?? Timestamp.now(),
+      bio: data['bio'],
     );
   }
 
@@ -40,6 +43,29 @@ class GroupModel {
       'adminUids': adminUids,
       'createdBy': createdBy,
       'createdAt': createdAt,
+      if (bio != null) 'bio': bio,
     };
+  }
+
+  GroupModel copyWith({
+    String? id,
+    String? name,
+    String? avatarEmoji,
+    List<String>? memberUids,
+    List<String>? adminUids,
+    String? createdBy,
+    Timestamp? createdAt,
+    String? bio,
+  }) {
+    return GroupModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      avatarEmoji: avatarEmoji ?? this.avatarEmoji,
+      memberUids: memberUids ?? this.memberUids,
+      adminUids: adminUids ?? this.adminUids,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      bio: bio ?? this.bio,
+    );
   }
 }

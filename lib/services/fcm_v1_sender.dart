@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
 import 'package:http/http.dart' as http;
@@ -46,8 +47,8 @@ class FcmV1Sender {
     required String token,
     required String title,
     required String body,
-    required String chatType, // 'chat' or 'group_chat'
-    required String targetId, // The ID needed to open the chat (Sender UID or Group ID)
+    required String chatType,
+    required String targetId,
     Map<String, String>? extraData,
     String? receiverId,
   }) async {
@@ -56,7 +57,7 @@ class FcmV1Sender {
 
     final url = Uri.parse('https://fcm.googleapis.com/v1/projects/$_projectId/messages:send');
 
-    const String channelId = 'flash_chat_custom_v1';
+    const String channelId = 'flash_chat_custom_v10';
 
     final Map<String, String> dataPayload = {
       'type': chatType,
@@ -78,15 +79,17 @@ class FcmV1Sender {
     final payload = {
       "message": {
         "token": token,
-        "notification": {
-          "title": title,
-          "body": body,
-        },
+        if (chatType != 'call')
+          "notification": {
+            "title": title,
+            "body": body,
+          },
         "android": {
           "priority": "HIGH",
-          "notification": {
-            "channel_id": channelId,
-          }
+          if (chatType != 'call')
+            "notification": {
+              "channel_id": channelId,
+            }
         },
         "apns": {
           "payload": {

@@ -78,7 +78,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // This screen gets its own provider to manage its specific update flow.
     return BlocProvider(
       create: (context) => ProfileCubit(),
       child: Scaffold(
@@ -98,7 +97,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 text: state.message,
                 barrierDismissible: false,
                 onConfirmBtnTap: () {
-                  // Pop the alert, then pop the edit screen
                   Navigator.of(context).pop();
                   Navigator.of(context).pop();
                 },
@@ -155,7 +153,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     minLines: 1,
                     maxLines: 4,
                     keyboardType: TextInputType.multiline,
-                    validator: (String? p1) {  },
+                    validator: (String? p1) {
+                      return null;
+                    },
                   ),
                   SizedBox(height: 40.h),
                   state is ProfileLoading

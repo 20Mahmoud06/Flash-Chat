@@ -1,5 +1,21 @@
+# Dart / Flutter
+.dart_tool/
+build/
+
+# VSCode
+.vscode/
+
+# IntelliJ
+.idea/
+
+# Firebase service key
 assets/service_account.json
 
-# Project exclude paths
-/.dart_tool/
-/build/
+# Cloudinary & Agora configs
+lib/utils/cloudinary_config.dart
+lib/utils/agora_config.dart
+
+# Any env/config files
+*.env
+*.keys
+*.secrets

@@ -10,7 +10,7 @@ import '../../widgets/custom_button.dart';
 import '../../core/routes/route_names.dart';
 import '../../models/user_model.dart';
 import '../../widgets/custom_text.dart';
-import '../../widgets/page_transition.dart';
+import '../../utils/page_transition.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -28,7 +28,6 @@ class ProfileScreen extends StatelessWidget {
           elevation: 1,
           iconTheme: const IconThemeData(color: Colors.white),
           actions: [
-            // The Builder is used to get a new context that is under the BlocProvider
             Builder(
               builder: (context) {
                 return IconButton(
@@ -42,7 +41,6 @@ class ProfileScreen extends StatelessWidget {
                           transitionsBuilder: PageTransition.slideFromRight,
                         ),
                       ).then((_) {
-                        // After returning, reload the profile to see changes
                         context.read<ProfileCubit>().loadUserProfile();
                       });
                     }
@@ -91,7 +89,6 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-// Extracted the main view into a separate widget for clarity
 class _BuildProfileView extends StatelessWidget {
   final UserModel user;
   const _BuildProfileView({required this.user});
