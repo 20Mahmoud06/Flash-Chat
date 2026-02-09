@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../core/routes/route_names.dart';
-import '../cubits/auth_cubit/auth_cubit.dart';
-import '../cubits/auth_cubit/auth_state.dart';
+import '../features/auth/cubit/auth_cubit.dart';
+import '../features/auth/cubit/auth_state.dart';
 import '../services/deep_link_service.dart';
 
 class SplashScreen extends StatefulWidget {

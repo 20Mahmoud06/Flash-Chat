@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:animated_text_kit/animated_text_kit.dart';
-import 'package:flash_chat_app/widgets/custom_button.dart';
 import '../core/routes/route_names.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../widgets/custom_text.dart';
+
+import '../shared/widgets/custom_button.dart';
+import '../shared/widgets/custom_text.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});

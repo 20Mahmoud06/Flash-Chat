@@ -12,8 +12,8 @@ build/
 assets/service_account.json
 
 # Cloudinary & Agora configs
-lib/utils/cloudinary_config.dart
-lib/utils/agora_config.dart
+lib/config/cloudinary_config.dart
+lib/config/agora_config.dart
 
 # Any env/config files
 *.env

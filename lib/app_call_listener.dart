@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'services/call_service.dart';
+import 'features/calls/services/call_service.dart';
 import 'services/deep_link_service.dart';
 
 class AppCallListener extends StatefulWidget {

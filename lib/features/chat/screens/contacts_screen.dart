@@ -1,24 +1,22 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flash_chat_app/models/group_model.dart';
-import 'package:flash_chat_app/models/user_model.dart';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:quickalert/quickalert.dart';
+import '../../../core/utils/page_transition.dart';
+import '../../../models/user_model.dart' show UserModel;
+import '../../../shared/widgets/custom_text.dart';
+import '../../groups/screens/create_group_screen.dart';
+import 'chat_screen.dart';
 
-import '../../shared/widgets/custom_text.dart';
-
-class AddGroupMembersScreen extends StatefulWidget {
-  final GroupModel group;
-
-  const AddGroupMembersScreen({super.key, required this.group});
+class ContactsScreen extends StatefulWidget {
+  const ContactsScreen({super.key});
 
   @override
-  State<AddGroupMembersScreen> createState() => _AddGroupMembersScreenState();
+  State<ContactsScreen> createState() => _ContactsScreenState();
 }
 
-class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
+class _ContactsScreenState extends State<ContactsScreen> {
   bool _isLoading = true;
   List<UserModel> _appContacts = [];
   String _errorMessage = '';
@@ -78,19 +76,26 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
             }
           }
         }
-
-        final List<UserModel> otherContacts = matchedContacts
-            .where((matched) => matched.uid != currentUser.uid)
-            .toList();
-
+        UserModel? currentUserModel;
+        final List<UserModel> otherContacts = [];
+        for (var contact in allAppUsers) {
+          if (contact.uid == currentUser.uid) {
+            currentUserModel = contact;
+            break;
+          }
+        }
+        for (var matched in matchedContacts) {
+          if (matched.uid != currentUser.uid) {
+            otherContacts.add(matched);
+          }
+        }
         otherContacts.sort(
-              (a, b) => a.firstName.toLowerCase().compareTo(b.firstName.toLowerCase()),
-        );
-
-        final List<UserModel> finalContacts = otherContacts
-            .where((u) => !widget.group.memberUids.contains(u.uid))
-            .toList();
-
+                (a, b) => a.firstName.toLowerCase().compareTo(b.firstName.toLowerCase()));
+        final List<UserModel> finalContacts = [];
+        if (currentUserModel != null) {
+          finalContacts.add(currentUserModel);
+        }
+        finalContacts.addAll(otherContacts);
         if (mounted) {
           setState(() {
             _appContacts = finalContacts;
@@ -121,16 +126,27 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
 
   void _onContactTapped(UserModel user) {
     final currentUid = FirebaseAuth.instance.currentUser!.uid;
-    if (user.uid == currentUid) return;
-
-    setState(() {
-      if (_selectedContacts.contains(user)) {
-        _selectedContacts.remove(user);
-      } else {
-        _selectedContacts.add(user);
-      }
-      _isSelectionMode = _selectedContacts.isNotEmpty;
-    });
+    if (_isSelectionMode) {
+      if (user.uid == currentUid) return;
+      setState(() {
+        if (_selectedContacts.contains(user)) {
+          _selectedContacts.remove(user);
+        } else {
+          _selectedContacts.add(user);
+        }
+        if (_selectedContacts.isEmpty) {
+          _isSelectionMode = false;
+        }
+      });
+    } else {
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) => ChatScreen(contact: user),
+          transitionsBuilder: PageTransition.slideFromRight,
+        ),
+      );
+    }
   }
 
   void _onContactLongPressed(UserModel user) {
@@ -141,37 +157,6 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
         _isSelectionMode = true;
         _selectedContacts.add(user);
       });
-    }
-  }
-
-  Future<void> _addMembers() async {
-    if (_selectedContacts.isEmpty) return;
-
-    final newUids = _selectedContacts.map((u) => u.uid).toList();
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('groups')
-          .doc(widget.group.id)
-          .update({
-        'memberUids': FieldValue.arrayUnion(newUids),
-      });
-
-      final updatedMembers = [...widget.group.memberUids, ...newUids].toSet().toList();
-      final updatedGroup = widget.group.copyWith(memberUids: updatedMembers);
-
-      if (mounted) {
-        Navigator.pop(context, updatedGroup);
-      }
-    } catch (e) {
-      if (mounted) {
-        QuickAlert.show(
-          context: context,
-          type: QuickAlertType.error,
-          title: 'Add Failed',
-          text: e.toString(),
-        );
-      }
     }
   }
 
@@ -193,7 +178,7 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
         title: CustomText(
             text: _isSelectionMode
                 ? '${_selectedContacts.length} selected'
-                : 'Add Members'),
+                : 'New Chat'),
         titleTextStyle:
         const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
         centerTitle: false,
@@ -207,7 +192,17 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
       floatingActionButton: _isSelectionMode && _selectedContacts.isNotEmpty
           ? FloatingActionButton(
         backgroundColor: Colors.lightBlueAccent,
-        onPressed: _addMembers,
+        onPressed: () {
+          Navigator.push(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) => CreateGroupScreen(
+                initialMembers: _selectedContacts.toList(),
+              ),
+              transitionsBuilder: PageTransition.slideFromRight,
+            ),
+          );
+        },
         child: const Icon(Icons.arrow_forward, color: Colors.white),
       )
           : null,
@@ -238,13 +233,13 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
               Icon(Icons.person_search, size: 80, color: Colors.grey.shade300),
               SizedBox(height: 16.h),
               CustomText(
-                  text:  'No Contacts Available',
+                  text:  'No Contacts Found',
                   fontSize: 20.sp,
                   fontWeight: FontWeight.bold,
                   textColor: Colors.grey.shade700),
               SizedBox(height: 8.h),
               CustomText(
-                text: 'No additional contacts from your phone are using the app or not already in the group.',
+                text: 'None of your phone contacts seem to be using the app yet. Invite them to join!',
                 textAlign: TextAlign.center,
                 fontSize: 16.sp, textColor: Colors.grey[600],
               ),
