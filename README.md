@@ -125,4 +125,4 @@ Keep API keys private 🔒
 
 MIT License
 
-<p align="center"> Built with passion by Mahmoud Safa ⚡ </p> ```
+<p align="center"> Built with passion by Mahmoud Safa ⚡ </p> 
