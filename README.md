@@ -4,6 +4,7 @@
 
 <h1 align="center">⚡ Flash Chat</h1>
 
+
 <p align="center">
 A sleek and modern real-time messaging application built with Flutter & Firebase.
 <br/>
