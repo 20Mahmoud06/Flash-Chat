@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/readme/Flash_Chat.png" width="100%" />
+  <img src="assets/Flash_Chat.png" width="100%" />
 </p>
 
 <h1 align="center">⚡ Flash Chat</h1>
