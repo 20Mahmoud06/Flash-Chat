@@ -85,44 +85,95 @@ Designed with a custom UI/UX from scratch to provide a clean and minimal experie
 
 ---
 
-## 📦 Installation
+# 📦 Installation
 
-bash
+Clone the repository:
 
+```bash
 git clone https://github.com/20Mahmoud06/Flash-Chat.git
+```
 
+Navigate to the project directory:
+
+```bash
 cd Flash-Chat
+```
 
+Install dependencies:
+
+```bash
 flutter pub get
+```
 
+Run the application:
+
+```bash
 flutter run
+```
 
-🔧 Firebase Setup
+---
 
-Add:
+# 🔧 Firebase Setup
 
+Add the required Firebase configuration files:
+
+```text
 android/app/google-services.json
-
 ios/Runner/GoogleService-Info.plist
+```
 
-🔐 Security Notice
+Make sure Firebase Authentication, Cloud Firestore, and Firebase Cloud Messaging are properly configured in your Firebase project.
 
-Do NOT upload:
+---
 
+# 🔐 Security Notice
+
+Never upload sensitive configuration files or API keys.
+
+The following files should remain private:
+
+```text
 agora_config.dart
-
 cloudinary_config.dart
-
 service_account.json
+```
 
-Keep API keys private 🔒
+Keep all credentials and API keys secure.
 
-📱 Download APK
+---
 
-👉 Download Flash Chat
+# 📱 Download APK
 
-📄 License
+<p align="center">
+  <a href="https://drive.google.com/file/d/1JDGU0CLXgxVvMGc6h5x6wJVsq6_XCK9K/view?usp=drive_link">
+    <img src="https://img.shields.io/badge/Download-APK-blue?style=for-the-badge" />
+  </a>
+</p>
+
+---
+
+## 🤝 Contributing
+
+Contributions, feature requests, and improvements are always welcome.
+
+Feel free to fork the repository and submit a pull request.
+
+---
+
+## 📜 License
 
 MIT License
 
-<p align="center"> Built with passion by Mahmoud Safa ⚡ </p> 
+---
+
+# 👨‍💻 Developer
+
+### Mahmoud Safa
+
+Flutter Developer passionate about building high-performance mobile applications with modern UI/UX and clean architecture.
+
+---
+
+<p align="center">
+Built with ❤️ by Mahmoud Safa
+</p>
