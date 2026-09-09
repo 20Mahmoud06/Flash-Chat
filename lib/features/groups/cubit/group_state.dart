@@ -58,3 +58,11 @@ class GroupError extends GroupState {
   @override
   List<Object?> get props => [message];
 }
+
+class GroupMemberRemoved extends GroupState {}
+
+/// Emitted after the creator deletes the whole group. The group becomes
+/// read-only for everyone but stays readable, so the UI just closes the
+/// info screen and lets the live group-doc listener flip the chat to
+/// read-only mode.
+class GroupDeleted extends GroupState {}

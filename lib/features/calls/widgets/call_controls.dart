@@ -1,3 +1,4 @@
+﻿import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class CallControls extends StatelessWidget {
@@ -20,58 +21,150 @@ class CallControls extends StatelessWidget {
     required this.onEndCall,
   });
 
+  Widget _buildControlButton({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required bool isActive,
+    bool isDestructive = false,
+    String? tooltip,
+  }) {
+    final backgroundColor = isDestructive
+        ? const Color(0xFFFF3B30)
+        : (isActive
+            ? Colors.redAccent.withValues(alpha: 0.9)
+            : Colors.white.withValues(alpha: 0.15));
+
+    const iconColor = Colors.white;
+
+    return Tooltip(
+      message: tooltip ?? '',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(30),
+          child: Container(
+            width: isDestructive ? 60 : 50,
+            height: isDestructive ? 60 : 50,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isDestructive
+                    ? Colors.red.shade400
+                    : (isActive
+                        ? Colors.red.shade300
+                        : Colors.white.withValues(alpha: 0.2)),
+                width: 1.5,
+              ),
+              boxShadow: isDestructive
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFFFF3B30).withValues(alpha: 0.4),
+                        blurRadius: 16,
+                        spreadRadius: 2,
+                      )
+                    ]
+                  : (isActive
+                      ? [
+                          BoxShadow(
+                            color: Colors.redAccent.withValues(alpha: 0.3),
+                            blurRadius: 10,
+                            spreadRadius: 1,
+                          )
+                        ]
+                      : []),
+            ),
+            child: Center(
+              child: Icon(
+                icon,
+                color: iconColor,
+                size: isDestructive ? 28 : 24,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Mute button
-        IconButton(
-          icon: Icon(
-            isMuted ? Icons.mic_off : Icons.mic,
-            color: Colors.white,
-            size: 32,
-          ),
-          onPressed: onMuteToggle,
-        ),
-
-        // Camera button (video only)
-        if (isVideo && onCameraToggle != null) ...[
-          IconButton(
-            icon: Icon(
-              isCameraOff ? Icons.videocam_off : Icons.videocam,
-              color: Colors.white,
-              size: 32,
+    return Center(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(40),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E2E).withValues(alpha: 0.75),
+              borderRadius: BorderRadius.circular(40),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 1.5,
+              ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black38,
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
             ),
-            onPressed: onCameraToggle,
-          ),
-        ],
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Mute microphone button
+                  _buildControlButton(
+                    icon: isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                    onPressed: onMuteToggle,
+                    isActive: isMuted,
+                    tooltip: isMuted ? 'Unmute' : 'Mute',
+                  ),
 
-        const SizedBox(width: 30),
+                  if (isVideo && onCameraToggle != null) ...[
+                    const SizedBox(width: 16),
+                    // Camera toggle button
+                    _buildControlButton(
+                      icon: isCameraOff
+                          ? Icons.videocam_off_rounded
+                          : Icons.videocam_rounded,
+                      onPressed: onCameraToggle,
+                      isActive: isCameraOff,
+                      tooltip: isCameraOff ? 'Turn Camera On' : 'Turn Camera Off',
+                    ),
+                  ],
 
-        // End call button
-        IconButton(
-          icon: const Icon(
-            Icons.call_end,
-            color: Colors.red,
-            size: 40,
-          ),
-          onPressed: onEndCall,
-        ),
+                  if (isVideo && onSwitchCamera != null) ...[
+                    const SizedBox(width: 16),
+                    // Switch camera button
+                    _buildControlButton(
+                      icon: Icons.flip_camera_ios_rounded,
+                      onPressed: onSwitchCamera,
+                      isActive: false,
+                      tooltip: 'Switch Camera',
+                    ),
+                  ],
 
-        const SizedBox(width: 30),
+                  const SizedBox(width: 20),
 
-        // Switch camera button (video only)
-        if (isVideo && onSwitchCamera != null)
-          IconButton(
-            icon: const Icon(
-              Icons.switch_camera,
-              color: Colors.white,
-              size: 32,
+                  // End call button
+                  _buildControlButton(
+                    icon: Icons.call_end_rounded,
+                    onPressed: onEndCall,
+                    isActive: false,
+                    isDestructive: true,
+                    tooltip: 'End Call',
+                  ),
+                ],
+              ),
             ),
-            onPressed: onSwitchCamera,
           ),
-      ],
+        ),
+      ),
     );
   }
 }

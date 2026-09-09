@@ -2,6 +2,7 @@
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -16,17 +17,59 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="com.huawei.push.permission.MESSAGING_EVENT" />
 
     <application
         android:usesCleartextTraffic="true"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:label="Flash Chat"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
         <service
-            android:name="com.hiennv.flutter_callkit_incoming.CallkitIncomingService"
-            android:permission="android.permission.FOREGROUND_SERVICE"
+            android:name=".hms.HmsMessageService"
             android:exported="false"
-            android:foregroundServiceType="mediaPlayback|microphone|camera" />
+            android:permission="com.huawei.push.permission.MESSAGING_EVENT">
+            <intent-filter>
+                <action android:name="com.huawei.push.action.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- FCM message service: renders chat notifications natively when the
+             app is closed/locked. The priority (1) makes it win the FCM SDK's
+             service resolution over the plugin's no-op service (0) and the
+             SDK's own rendering service (-500), so onMessageReceived actually
+             runs instead of being silently dropped. -->
+        <service
+            android:name=".fcm.FlashChatFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter android:priority="1">
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <!-- Receives the sticky voice-call notification action taps (mute /
+             end call / reopen) and forwards them to the running engine. -->
+        <receiver
+            android:name=".CallNotification$CallControlReceiver"
+            android:exported="false" />
+
+        <!-- Persists an accept/decline decision made on the native ring when
+             the app process was killed, so the caller learns the outcome and
+             cold-boot recovery can resume an accepted call even though the
+             Dart engine is not running to handle the CallKit event. -->
+        <receiver
+            android:name=".CallDecisionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="${applicationId}.com.hiennv.flutter_callkit_incoming.ACTION_CALLKIT_DECISION" />
+            </intent-filter>
+        </receiver>
 
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
@@ -36,20 +79,20 @@
             android:resource="@drawable/ic_notification" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="flash_chat_custom_v10" />
+            android:value="flash_chat_custom_v13" />
 <!--        <meta-data-->
 <!--            android:name="com.google.firebase.messaging.default_notification_color"-->
 <!--            android:resource="@color/colorAccent" />-->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:showWhenLocked="true"
-            android:turnScreenOn="true"
             android:launchMode="singleTask"
             android:taskAffinity=""
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
@@ -79,6 +122,14 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="http"/>
         </intent>
     </queries>
 </manifest>

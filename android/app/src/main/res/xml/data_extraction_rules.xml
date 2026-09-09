@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Opts the app out of Android Auto Backup / device-to-device restore (API 12+).
+
+    All app data is server-backed (Firestore), and the local store holds
+    device-specific state (permission-onboarding markers, FCM/HMS tokens,
+    theme, message timestamps). Restoring those after a reinstall caused the
+    one-time permission onboarding to stay suppressed, leaving devices with
+    notifications/calls silently disabled. Nothing local should ever be
+    injected back into a fresh install.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="shared" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="shared" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -23,6 +24,17 @@ class VoiceRecorderService {
       path: _path!,
     );
   }
+
+  /// Stream of normalized (0..1) loudness for the live waveform.
+  /// The record plugin reports dBFS (negative values), so we convert to a
+  /// linear scale the UI can draw nice bars with.
+  Stream<double> get amplitudeStream =>
+      _recorder
+          .onAmplitudeChanged(const Duration(milliseconds: 100))
+          .map((amp) {
+        final linear = math.pow(10.0, amp.current / 20.0).toDouble();
+        return linear.clamp(0.0, 1.0);
+      });
 
   Future<void> pause() => _recorder.pause();
 

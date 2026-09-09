@@ -5,6 +5,7 @@ class RouteNames {
   static const String login = '/login';
   static const String resetPassword = '/resetPassword';
   static const String completeProfilePage = '/completeProfilePage';
+  static const String phoneVerificationPage = '/phoneVerificationPage';
   static const String profilePage = 'profilePage';
   static const String senderProfilePage = 'senderProfilePage';
   static const String editProfilePage = '/editProfilePage';
@@ -18,5 +19,6 @@ class RouteNames {
   static const String videoCallPage = '/videoCallPage';
   static const String editGroupPage = '/editGroupPage';
   static const String editPagePage = '/editPagePage';
+  static const String blockedUsersPage = '/blockedUsersPage';
 
 }

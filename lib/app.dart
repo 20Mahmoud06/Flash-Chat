@@ -1,15 +1,19 @@
 import 'package:flash_chat_app/services/auth/auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:flutter_offline/flutter_offline.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'app_call_listener.dart';
 import 'core/routes/app_router.dart';
 import 'core/routes/navigation_service.dart';
+import 'core/theme/app_theme.dart';
 import 'features/auth/cubit/auth_cubit.dart';
+import 'features/calls/cubit/call_cubit.dart';
+import 'features/connectivity/cubit/connectivity_cubit.dart';
 import 'features/profile/cubit/profile_cubit.dart';
-import 'screens/offline_screen.dart';
+import 'features/settings/cubit/theme_cubit.dart';
 import 'screens/splash_screen.dart';
+import 'shared/widgets/call_in_progress_pill.dart';
+import 'shared/widgets/connection_status_banner.dart';
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -29,15 +33,34 @@ class MyApp extends StatelessWidget {
             BlocProvider<ProfileCubit>(
               create: (_) => ProfileCubit(),
             ),
+            BlocProvider<ConnectivityCubit>(
+              create: (_) => ConnectivityCubit(),
+            ),
+            BlocProvider<ThemeCubit>(
+              create: (_) => ThemeCubit(),
+            ),
+            // App-wide call cubit: the Agora engine must survive the call
+            // page being popped (minimized voice calls / video PiP).
+            BlocProvider<CallCubit>(
+              lazy: true,
+              create: (_) => CallCubit.instance,
+            ),
           ],
           child: AppCallListener(
-            child: MaterialApp(
-              navigatorKey: navigatorKey,
-              debugShowCheckedModeBanner: false,
-              title: 'Flash Chat',
-              builder: _buildWithOfflineDetection,
-              onGenerateRoute: AppRouter.generateRoute,
-              home: const SplashScreen(),
+            child: BlocBuilder<ThemeCubit, ThemeState>(
+              builder: (context, themeState) {
+                return MaterialApp(
+                  navigatorKey: navigatorKey,
+                  debugShowCheckedModeBanner: false,
+                  title: 'Flash Chat',
+                  theme: AppTheme.light,
+                  darkTheme: AppTheme.dark,
+                  themeMode: themeState.mode,
+                  builder: _buildWithOfflineDetection,
+                  onGenerateRoute: AppRouter.generateRoute,
+                  home: const SplashScreen(),
+                );
+              },
             ),
           ),
         );
@@ -46,21 +69,16 @@ class MyApp extends StatelessWidget {
   }
 
   Widget _buildWithOfflineDetection(BuildContext context, Widget? child) {
-    return OfflineBuilder(
-      connectivityBuilder: (context, connectivity, offlineChild) {
-        final bool connected = connectivity.any(
-              (c) => c != ConnectivityResult.none,
-        );
-
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            offlineChild,
-            if (!connected) const OfflineScreen(),
-          ],
-        );
-      },
-      child: child!,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        child!,
+        const Align(
+          alignment: Alignment.topCenter,
+          child: ConnectionStatusBanner(),
+        ),
+        const CallInProgressPill(),
+      ],
     );
   }
 }

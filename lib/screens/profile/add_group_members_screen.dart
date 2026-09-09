@@ -1,18 +1,23 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+﻿import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flash_chat_app/features/groups/cubit/group_cubit.dart';
 import 'package:flash_chat_app/models/group_model.dart';
 import 'package:flash_chat_app/models/user_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:quickalert/quickalert.dart';
-
 import '../../shared/widgets/custom_text.dart';
+import '../../core/theme/app_theme.dart';
 
 class AddGroupMembersScreen extends StatefulWidget {
   final GroupModel group;
+  final GroupCubit cubit;
 
-  const AddGroupMembersScreen({super.key, required this.group});
+  const AddGroupMembersScreen({
+    super.key,
+    required this.group,
+    required this.cubit,
+  });
 
   @override
   State<AddGroupMembersScreen> createState() => _AddGroupMembersScreenState();
@@ -26,10 +31,32 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
   bool _isSelectionMode = false;
   final Set<UserModel> _selectedContacts = {};
 
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  final FocusNode _searchFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
     _getContacts();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchFocusNode.dispose();
+    super.dispose();
+  }
+
+  List<UserModel> get _filteredContacts {
+    if (_searchQuery.isEmpty) return _appContacts;
+    final q = _searchQuery.toLowerCase();
+    return _appContacts.where((u) {
+      if (u.firstName.toLowerCase().contains(q)) return true;
+      if (u.lastName.toLowerCase().contains(q)) return true;
+      if (u.phoneNumber.replaceAll(RegExp(r'\D'), '').contains(q)) return true;
+      return false;
+    }).toList();
   }
 
   String _normalizePhoneNumber(String phone) {
@@ -47,8 +74,27 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser == null) {
-        setState(() => _errorMessage = 'You are not logged in.');
+        if (mounted) {
+          setState(() => _errorMessage = 'You are not logged in.');
+        }
         return;
+      }
+
+      // Read the freshest membership straight from Firestore instead of
+      // trusting the GroupModel passed into this screen. The in-memory model
+      // can be stale (e.g. it still lists a member who was just removed), which
+      // would wrongly filter that contact out and prevent re-adding them.
+      Set<String> currentMemberUids;
+      try {
+        final groupDoc = await FirebaseFirestore.instance
+            .collection('groups')
+            .doc(widget.group.id)
+            .get();
+        final rawUids =
+            (groupDoc.data()?['memberUids'] as List<dynamic>?) ?? const [];
+        currentMemberUids = rawUids.map((u) => u.toString()).toSet();
+      } catch (_) {
+        currentMemberUids = widget.group.memberUids.toSet();
       }
 
       if (await FlutterContacts.requestPermission()) {
@@ -88,7 +134,8 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
         );
 
         final List<UserModel> finalContacts = otherContacts
-            .where((u) => !widget.group.memberUids.contains(u.uid))
+            .where((u) => !currentMemberUids.contains(u.uid))
+            .where((u) => !u.isDeleted)
             .toList();
 
         if (mounted) {
@@ -149,29 +196,15 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
 
     final newUids = _selectedContacts.map((u) => u.uid).toList();
 
-    try {
-      await FirebaseFirestore.instance
-          .collection('groups')
-          .doc(widget.group.id)
-          .update({
-        'memberUids': FieldValue.arrayUnion(newUids),
-      });
+    // Membership changes go through the cubit, which enforces that only
+    // group admins can add members (also enforced by Firestore rules).
+    widget.cubit.addMembersToGroup(
+      group: widget.group,
+      newMemberUids: newUids,
+    );
 
-      final updatedMembers = [...widget.group.memberUids, ...newUids].toSet().toList();
-      final updatedGroup = widget.group.copyWith(memberUids: updatedMembers);
-
-      if (mounted) {
-        Navigator.pop(context, updatedGroup);
-      }
-    } catch (e) {
-      if (mounted) {
-        QuickAlert.show(
-          context: context,
-          type: QuickAlertType.error,
-          title: 'Add Failed',
-          text: e.toString(),
-        );
-      }
+    if (mounted) {
+      Navigator.pop(context);
     }
   }
 
@@ -203,7 +236,7 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
           color: Colors.white,
         ),
       ),
-      body: _buildBody(),
+      body: _buildBody(context),
       floatingActionButton: _isSelectionMode && _selectedContacts.isNotEmpty
           ? FloatingActionButton(
         backgroundColor: Colors.lightBlueAccent,
@@ -214,7 +247,8 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(BuildContext context) {
+    final colors = FcAppColors.of(context);
     if (_isLoading) {
       return const Center(
           child: CircularProgressIndicator(color: Colors.lightBlueAccent));
@@ -225,7 +259,7 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
             padding: const EdgeInsets.all(20.0),
             child: CustomText(text: _errorMessage,
                 textAlign: TextAlign.center,
-                fontSize: 16.sp, textColor: Colors.grey[600]),
+                fontSize: 16.sp, textColor: colors.textSecondary),
           ));
     }
     if (_appContacts.isEmpty) {
@@ -235,18 +269,18 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.person_search, size: 80, color: Colors.grey.shade300),
+              Icon(Icons.person_search, size: 80, color: colors.textWeak),
               SizedBox(height: 16.h),
               CustomText(
                   text:  'No Contacts Available',
                   fontSize: 20.sp,
                   fontWeight: FontWeight.bold,
-                  textColor: Colors.grey.shade700),
+                  textColor: colors.textSecondary),
               SizedBox(height: 8.h),
               CustomText(
                 text: 'No additional contacts from your phone are using the app or not already in the group.',
                 textAlign: TextAlign.center,
-                fontSize: 16.sp, textColor: Colors.grey[600],
+                fontSize: 16.sp, textColor: colors.textSecondary,
               ),
             ],
           ),
@@ -254,10 +288,75 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
       );
     }
 
+    final filtered = _filteredContacts;
+
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+          child: TextField(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            onChanged: (v) => setState(() => _searchQuery = v),
+            style: TextStyle(color: colors.textPrimary, fontSize: 16.sp),
+            cursorColor: Colors.lightBlueAccent,
+            decoration: InputDecoration(
+              hintText: 'Search by name or number',
+              hintStyle: TextStyle(color: colors.textWeak, fontSize: 16.sp),
+              prefixIcon: Icon(Icons.search, color: colors.textWeak),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.close, color: colors.textWeak),
+                      onPressed: () {
+                        _searchController.clear();
+                        setState(() => _searchQuery = '');
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: colors.inputFill,
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(vertical: 14.h),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide(
+                  color: Colors.lightBlueAccent,
+                  width: 1.5.w,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Divider(color: colors.divider, height: 1),
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: CustomText(
+                    text: 'No contacts match "$_searchQuery"',
+                    textColor: colors.textWeak,
+                    fontSize: 16.sp,
+                  ),
+                )
+              : _buildContactList(filtered, colors),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildContactList(List<UserModel> contacts, FcAppColors colors) {
     return ListView.builder(
-      itemCount: _appContacts.length,
+      padding: EdgeInsets.only(bottom: 80.h),
+      itemCount: contacts.length,
       itemBuilder: (context, index) {
-        final user = _appContacts[index];
+        final user = contacts[index];
         final isCurrentUser =
             user.uid == FirebaseAuth.instance.currentUser?.uid;
         final isSelected = _selectedContacts.contains(user);
@@ -267,7 +366,7 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
           EdgeInsets.symmetric(vertical: 8.h, horizontal: 16.w),
           leading: CircleAvatar(
             radius: 28.r,
-            backgroundColor: isSelected ? Colors.lightBlueAccent.withOpacity(0.3) : Colors.lightBlue.shade50,
+            backgroundColor: isSelected ? Colors.lightBlueAccent.withValues(alpha: 0.3) : colors.avatarBackground,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -282,13 +381,19 @@ class _AddGroupMembersScreenState extends State<AddGroupMembersScreen> {
           ),
           title: Row(
             children: [
-              CustomText(text: '${user.firstName} ${user.lastName}',
-                  fontWeight: FontWeight.w600),
+              Flexible(
+                child: CustomText(
+                  text: '${user.firstName} ${user.lastName}',
+                  fontWeight: FontWeight.w600,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
               if (isCurrentUser)
                 Padding(
                     padding: EdgeInsets.only(left: 8.w),
                     child: CustomText(text: '(You)',
-                        textColor: Colors.grey.shade600,
+                        textColor: colors.textSecondary,
                         fontWeight: FontWeight.normal)),
             ],
           ),

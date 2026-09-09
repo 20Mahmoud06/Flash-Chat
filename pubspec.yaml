@@ -27,7 +27,9 @@ dependencies:
 
   # Utilities
   flutter_offline: ^5.0.0
+  connectivity_plus: ^6.1.5
   permission_handler: ^12.0.1 # Updated to latest stable version
+  url_launcher: ^6.3.0
 
   # --- REPLACED acontacts_service ---
   flutter_contacts: ^1.1.8 # The new, modern contacts package
@@ -37,6 +39,7 @@ dependencies:
   firebase_messaging: ^15.1.0
   http: ^1.5.0
   googleapis_auth: ^2.0.0
+  crypto: ^3.0.3
   shared_preferences: ^2.5.3
   flutter_local_notifications: ^19.4.2
   flutter_bloc: ^9.1.1
@@ -54,10 +57,20 @@ dependencies:
   just_audio: ^0.9.44
   video_player: ^2.10.1
   audioplayers: ^6.5.1
+  gal: ^2.3.1
+  wechat_assets_picker: ^10.1.3
+  pinput: ^6.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+
+# Vendored fork of flutter_callkit_incoming. The native incoming-call activity
+# is customized so the ring shows the caller's emoji avatar and nickname
+# instead of the default white circle.
+dependency_overrides:
+  flutter_callkit_incoming:
+    path: third_party/flutter_callkit_incoming
 
 flutter:
   uses-material-design: true

@@ -19,3 +19,14 @@ lib/config/agora_config.dart
 *.env
 *.keys
 *.secrets
+
+# JVM / Gradle crash & Kotlin daemon logs (dev-machine noise)
+hs_err_pid*.log
+replay_pid*.log
+android/.kotlin/
+
+# Gradle build caches
+gradle/
+**/.gradle/
+android/.gradle/
+*.iml

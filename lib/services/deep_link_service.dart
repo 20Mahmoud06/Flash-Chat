@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../core/routes/navigation_service.dart';
 import '../core/routes/route_names.dart';
+import '../core/utils/call_utils.dart';
 import '../models/call_arguments.dart';
 import '../models/user_model.dart';
 import '../models/group_model.dart';
@@ -27,6 +28,15 @@ class DeepLinkService {
     _processPendingDeepLink();
   }
 
+  /// Clears any pending deep link and marks auth as not ready (user signed
+  /// out or the session could not be restored), so a stale notification tap
+  /// never navigates without a logged-in user.
+  void setLoggedOut() {
+    _pendingData = null;
+    _isAuthReady = false;
+    _isNavReady = false;
+  }
+
   void handleNotificationTap(Map<String, dynamic> data) {
     debugPrint('🔗 Deep link received: $data');
     _pendingData = data;
@@ -44,6 +54,20 @@ class DeepLinkService {
     }
   }
 
+  /// Reads a document from the server first so a notification tap always
+  /// opens with the freshest data (e.g. a group I was just added to). Falls
+  /// back to the on-device cache when offline so the tap still opens.
+  Future<DocumentSnapshot<Map<String, dynamic>>> _freshServerDoc(
+    DocumentReference<Map<String, dynamic>> ref,
+  ) async {
+    try {
+      return await ref.get(const GetOptions(source: Source.server));
+    } catch (e) {
+      debugPrint('🔗 Server read failed, falling back to cache: $e');
+      return ref.get(const GetOptions(source: Source.cache));
+    }
+  }
+
   void _processPendingDeepLink() async {
     if (!_isNavReady || !_isAuthReady || _pendingData == null) {
       debugPrint('⏳ Waiting for dependencies: Nav: $_isNavReady, Auth: $_isAuthReady');
@@ -58,6 +82,7 @@ class DeepLinkService {
     try {
       // 1. Handle Calls
       if (data['type'] == 'call') {
+        await applyCallerNickname(data);
         final args = CallArguments.fromMap(data);
         SchedulerBinding.instance.addPostFrameCallback((_) {
           navigatorKey.currentState?.pushNamed(
@@ -72,11 +97,14 @@ class DeepLinkService {
       if (data['type'] == 'chat') {
         final senderId = data['senderId'];
         if (senderId != null) {
-          final doc = await FirebaseFirestore.instance.collection('users').doc(senderId).get();
-          if (doc.exists) {
+          final doc = await _freshServerDoc(
+            FirebaseFirestore.instance.collection('users').doc(senderId),
+          );
+          if (doc.exists && doc.data() != null) {
             SchedulerBinding.instance.addPostFrameCallback((_) {
-              navigatorKey.currentState?.pushNamed(
+              navigatorKey.currentState?.pushNamedAndRemoveUntil(
                 RouteNames.chatPage,
+                (route) => route.isFirst,
                 arguments: UserModel.fromFirestore(doc),
               );
             });
@@ -88,11 +116,14 @@ class DeepLinkService {
       if (data['type'] == 'group_chat') {
         final groupId = data['groupId'];
         if (groupId != null) {
-          final doc = await FirebaseFirestore.instance.collection('groups').doc(groupId).get();
-          if (doc.exists) {
+          final doc = await _freshServerDoc(
+            FirebaseFirestore.instance.collection('groups').doc(groupId),
+          );
+          if (doc.exists && doc.data() != null) {
             SchedulerBinding.instance.addPostFrameCallback((_) {
-              navigatorKey.currentState?.pushNamed(
+              navigatorKey.currentState?.pushNamedAndRemoveUntil(
                 RouteNames.chatPage,
+                (route) => route.isFirst,
                 arguments: GroupModel.fromFirestore(doc),
               );
             });

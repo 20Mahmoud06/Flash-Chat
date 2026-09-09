@@ -10,6 +10,7 @@ class CallArguments {
   final bool isVideo;
   final String? callerId;
   final String? callerName;
+  final String? callerAvatar;
   final String? groupName;
 
   CallArguments({
@@ -20,6 +21,7 @@ class CallArguments {
     required this.isVideo,
     this.callerId,
     this.callerName,
+    this.callerAvatar,
     this.groupName,
   }) : assert(isGroup ? group != null || groupName != null : contact != null,
   'Must provide group or contact info');
@@ -48,13 +50,14 @@ class CallArguments {
         firstName: map['callerName']?.split(' ').first ?? '',
         lastName: map['callerName']?.split(' ').skip(1).join(' ') ?? '',
         phoneNumber: '',
-        avatarEmoji: '👤',
+        avatarEmoji: map['callerAvatar'] ?? '👤',
       )
           : null,
       callId: map['callId'] ?? '',
       isVideo: map['isVideo'] == true || map['isVideo'] == 'true',
       callerId: map['callerId'],
       callerName: map['callerName'],
+      callerAvatar: map['callerAvatar'] as String?,
       groupName: map['groupName'],
     );
   }

@@ -8,6 +8,7 @@ Future<void> showIncomingCall({
   required bool isVideo,
   required String callId,
   required Map<String, dynamic> extra,
+  String? avatar,
 }) async {
   final params = CallKitParams(
     id: callId,
@@ -15,6 +16,7 @@ Future<void> showIncomingCall({
     handle: 'Flash Chat',
     type: isVideo ? 1 : 0,
     duration: 30000,
+    avatar: avatar,
     textAccept: 'Accept',
     textDecline: 'Decline',
     extra: extra,
@@ -22,7 +24,12 @@ Future<void> showIncomingCall({
     android: const AndroidParams(
       isCustomNotification: true,
       isShowFullLockedScreen: true,
-      ringtonePath: 'system_ringtone_default',
+      // The app's own incoming-call ringtone (bundled in
+      // android/app/src/main/res/raw/ringtone.wav). The native
+      // CallkitSoundPlayerManager resolves this to a raw resource and loops it
+      // on the RING stream; it stops automatically when the call is accepted,
+      // declined, cancelled, timed out or ended.
+      ringtonePath: 'ringtone',
       backgroundColor: '#000000',
       actionColor: '#4CAF50',
     ),

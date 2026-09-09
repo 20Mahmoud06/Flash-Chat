@@ -10,6 +10,30 @@ class UserModel extends Equatable {
   final String avatarEmoji;
   final String? bio;
   final String? fcmToken;
+  final List<String> blockedUids;
+  final bool isDeleted;
+
+  /// Whether the phone number was confirmed through the OTP flow.
+  final bool phoneVerified;
+
+  /// Whether the user lets others see their online/last-seen status.
+  final bool presenceEnabled;
+
+  /// Contact uid → nickname, visible only to this user. Set from the
+  /// contact's info screen; used to override the contact's real name.
+  final Map<String, String> nicknames;
+
+  /// A placeholder user for when the actual user document is not found
+  /// (e.g., deleted accounts). The avatar emoji is the red X.
+  static UserModel get deletedUser => const UserModel(
+    uid: 'deleted',
+    email: 'deleted@example.com',
+    firstName: 'Deleted',
+    lastName: 'User',
+    phoneNumber: '',
+    avatarEmoji: '❌',
+    isDeleted: true,
+  );
 
   const UserModel({
     required this.uid,
@@ -20,10 +44,20 @@ class UserModel extends Equatable {
     required this.avatarEmoji,
     this.bio,
     this.fcmToken,
+    this.blockedUids = const [],
+    this.isDeleted = false,
+    this.phoneVerified = false,
+    this.presenceEnabled = true,
+    this.nicknames = const {},
   });
 
   /// Factory constructor to create a UserModel from a Firestore document.
+  /// Returns [deletedUser] if the document does not exist.
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
+    if (!doc.exists) {
+      return UserModel.deletedUser;
+    }
+
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return UserModel(
       uid: doc.id,
@@ -34,6 +68,14 @@ class UserModel extends Equatable {
       avatarEmoji: data['avatarEmoji'] ?? '👤',
       bio: data['bio'] as String?,
       fcmToken: data['fcmToken'] as String?,
+      blockedUids: List<String>.from(data['blockedUids'] ?? const []),
+      isDeleted: data['isDeleted'] ?? false,
+      phoneVerified: data['phoneVerified'] ?? false,
+      presenceEnabled: data['presenceEnabled'] != false,
+      nicknames: data['nicknames'] is Map
+          ? (data['nicknames'] as Map)
+              .map((k, v) => MapEntry(k.toString(), v.toString()))
+          : const <String, String>{},
     );
   }
 
@@ -48,6 +90,10 @@ class UserModel extends Equatable {
       'avatarEmoji': avatarEmoji,
       if (bio != null) 'bio': bio,
       if (fcmToken != null) 'fcmToken': fcmToken,
+      'blockedUids': blockedUids,
+      'phoneVerified': phoneVerified,
+      'presenceEnabled': presenceEnabled,
+      'nicknames': nicknames,
     };
   }
 
@@ -60,6 +106,11 @@ class UserModel extends Equatable {
     String? avatarEmoji,
     String? bio,
     String? fcmToken,
+    List<String>? blockedUids,
+    bool? isDeleted,
+    bool? phoneVerified,
+    bool? presenceEnabled,
+    Map<String, String>? nicknames,
   }) {
     return UserModel(
       uid: uid ?? this.uid,
@@ -70,12 +121,17 @@ class UserModel extends Equatable {
       avatarEmoji: avatarEmoji ?? this.avatarEmoji,
       bio: bio ?? this.bio,
       fcmToken: fcmToken ?? this.fcmToken,
+      blockedUids: blockedUids ?? this.blockedUids,
+      isDeleted: isDeleted ?? this.isDeleted,
+      phoneVerified: phoneVerified ?? this.phoneVerified,
+      presenceEnabled: presenceEnabled ?? this.presenceEnabled,
+      nicknames: nicknames ?? this.nicknames,
     );
   }
 
   String get fullName => '$firstName $lastName';
 
   @override
-  List<Object?> get props => [uid, email, firstName, lastName, phoneNumber, avatarEmoji, bio, fcmToken];
+  List<Object?> get props => [uid, email, firstName, lastName, phoneNumber, avatarEmoji, bio, fcmToken, blockedUids, isDeleted, phoneVerified, presenceEnabled, nicknames];
 
 }

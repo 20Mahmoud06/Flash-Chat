@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flash_chat_app/core/theme/app_theme.dart';
 
 import '../../../shared/widgets/custom_text.dart';
 
@@ -20,6 +21,7 @@ class GoogleSigninButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = FcAppColors.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
 
     return GestureDetector(
@@ -29,7 +31,7 @@ class GoogleSigninButton extends StatelessWidget {
           color: theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(50.0.r),
           border: Border.all(
-              color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+              color: isDarkMode ? colors.textSecondary : colors.divider,
               width: 1.5.w),
         ),
         width: double.infinity,
@@ -39,9 +41,9 @@ class GoogleSigninButton extends StatelessWidget {
               ? SizedBox(
             height: 25.h,
             width: 25.w,
-            child: const CircularProgressIndicator(
+            child: CircularProgressIndicator(
               strokeWidth: 3.0,
-              color: Colors.grey,
+              color: colors.textWeak,
             ),
           )
               : Row(

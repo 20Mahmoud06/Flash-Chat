@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flash_chat_app/features/auth/cubit/auth_state.dart';
 import 'package:flash_chat_app/services/auth/auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 class AuthCubit extends Cubit<AuthState> {
@@ -16,23 +17,49 @@ class AuthCubit extends Cubit<AuthState> {
       return;
     }
 
+    // No exception may ever escape here: a cold-start crash (or a splash
+    // that never resolves) would brick the app for a user who closed it on
+    // the "complete profile" / "verify phone number" screens. Every failure
+    // falls back to AuthNeedsProfile / AuthLoggedOut, which land on the
+    // auth screen offering Sign In, Sign Up, Verify Phone or Sign Out.
     try {
-      final userDoc = await FirebaseFirestore.instance
+      final userDocRef = FirebaseFirestore.instance
           .collection('users')
-          .doc(currentUser.uid)
-          .get();
+          .doc(currentUser.uid);
 
-      if (userDoc.exists &&
-          userDoc.data()?['firstName'] != null &&
-          userDoc.data()?['firstName'].isNotEmpty) {
+      // Normal read (server first, falls back to the on-device cache). When
+      // that fails entirely (offline with no cache), retry from the local
+      // cache so a signed-in user can still open the app and read chats.
+      DocumentSnapshot userDoc;
+      try {
+        userDoc = await userDocRef.get();
+      } catch (_) {
+        try {
+          userDoc =
+              await userDocRef.get(const GetOptions(source: Source.cache));
+        } catch (_) {
+          // Cannot reach Firestore at all and there is no cached doc: we
+          // cannot tell whether the profile exists, so treat the session as
+          // unknown (logged out) — stale deep links must not fire either.
+          emit(AuthLoggedOut());
+          return;
+        }
+      }
 
+      final data =
+          userDoc.exists ? userDoc.data() as Map<String, dynamic>? : null;
+      if (userDoc.exists && (data?['firstName'] as String? ?? '').isNotEmpty) {
         final userModel = await _authService.getUserById(currentUser.uid);
         emit(AuthLoggedIn(userModel));
       } else {
+        // Auth account exists but the profile was never completed (closed
+        // the app on the OTP verify or complete profile screen): offer to
+        // resume exactly where the user left off.
         emit(AuthNeedsProfile(currentUser));
       }
     } catch (e) {
-      emit(AuthLoggedOut());
+      debugPrint('checkAuthStatus failed, falling back to auth screen: $e');
+      if (!isClosed) emit(AuthNeedsProfile(currentUser));
     }
   }
 

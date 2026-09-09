@@ -42,3 +42,8 @@ class ProfileLogoutSuccess extends ProfileState {}
 
 // Specific state for successful deletion to trigger navigation
 class ProfileDeleteSuccess extends ProfileState {}
+
+// Emitted when deleting the account is blocked because the user needs to
+// re-authenticate first (Firebase `requires-recent-login`). The UI should
+// prompt the user to sign in again before retrying.
+class ProfileReauthRequired extends ProfileState {}

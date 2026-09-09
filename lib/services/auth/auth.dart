@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../models/user_model.dart';
+import 'phone_registry.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -45,7 +46,29 @@ class AuthService {
   }
 
   Future<void> deleteUser(String userId) async {
-    await _firestore.collection('users').doc(userId).delete();
+    // Tombstone the profile document first so other apps can show the
+    // deleted state (red X, read-only chat), then delete the Auth user.
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'isDeleted': true,
+        'deletedAt': FieldValue.serverTimestamp(),
+        'fcmToken': FieldValue.delete(),
+      });
+    } on FirebaseException catch (_) {
+      // The document may already be gone; deleting the Auth user is what
+      // actually removes the account.
+    }
+
+    // Release the phone-number claim so the number can be registered again.
+    try {
+      final profileDoc =
+          await _firestore.collection('users').doc(userId).get();
+      final phone = profileDoc.data()?['phoneNumber'] as String?;
+      if (phone != null && phone.isNotEmpty) {
+        await PhoneRegistry.instance.release(phone);
+      }
+    } catch (_) {}
+
     final user = _auth.currentUser;
     if (user != null && user.uid == userId) {
       await user.delete();
@@ -64,10 +87,10 @@ class AuthService {
         return _firebaseUserToUserModel(user);
       }
       return null;
-    } catch (e) {
-      debugPrint(e as String?);
-      return null;
-    }
+     } catch (e) {
+       debugPrint('Sign in error: $e');
+       return null;
+     }
   }
 
   Future<UserModel?> signInWithGoogle() async {
@@ -106,10 +129,10 @@ class AuthService {
       }
       return null;
     } on FirebaseAuthException catch (e) {
-      print('Sign Up Error: $e');
+      debugPrint('Sign Up Error: $e');
       rethrow;
     } catch (e) {
-      print('Unexpected Sign Up Error: $e');
+      debugPrint('Unexpected Sign Up Error: $e');
       return null;
     }
   }
@@ -119,7 +142,7 @@ class AuthService {
     try {
       await _auth.sendPasswordResetEmail(email: email);
     } catch (e) {
-      print('Reset Password Error: $e');
+      debugPrint('Reset Password Error: $e');
       rethrow;
     }
   }
@@ -127,5 +150,53 @@ class AuthService {
   Future<void> signOut() async {
     await _googleSignIn.signOut();
     await _auth.signOut();
+  }
+
+  /// The primary sign-in provider for the current account: `password`,
+  /// `google.com`, or `null` (not signed in / unknown).
+  String? get primaryProvider {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    for (final info in user.providerData) {
+      if (info.providerId == 'password') return 'password';
+      if (info.providerId == 'google.com') return 'google.com';
+    }
+    return user.providerData.isNotEmpty
+        ? user.providerData.first.providerId
+        : null;
+  }
+
+  // ---------------- Re-authentication ----------------
+
+  /// Re-authenticates an email/password account so sensitive operations
+  /// (e.g. `user.delete()`) no longer fail with `requires-recent-login`.
+  Future<void> reauthenticateWithPassword(String password) async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("Not signed in.");
+    final email = user.email;
+    if (email == null || email.isEmpty) {
+      throw Exception("No email address on this account.");
+    }
+    final credential =
+        EmailAuthProvider.credential(email: email, password: password);
+    await user.reauthenticateWithCredential(credential);
+  }
+
+  /// Re-authenticates a Google account by triggering a Google sign-in again.
+  /// Returns `false` if the user cancelled the Google sheet.
+  Future<bool> reauthenticateWithGoogle() async {
+    final user = _auth.currentUser;
+    if (user == null) throw Exception("Not signed in.");
+
+    final googleUser = await _googleSignIn.signIn();
+    if (googleUser == null) return false;
+
+    final googleAuth = await googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+      accessToken: googleAuth.accessToken,
+    );
+    await user.reauthenticateWithCredential(credential);
+    return true;
   }
 }

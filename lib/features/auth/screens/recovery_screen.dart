@@ -1,8 +1,10 @@
 import 'package:flash_chat_app/features/auth/cubit/auth_state.dart';
+import 'package:flash_chat_app/core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:quickalert/quickalert.dart';
+import '../../../core/utils/validators.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text.dart';
 import '../../../shared/widgets/custom_text_form_field.dart';
@@ -35,6 +37,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is AuthLoading) {
@@ -44,6 +47,10 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             type: QuickAlertType.success,
             title: "Check Your Email",
             text: "A password reset link has been sent to your email address.",
+            backgroundColor: FcAppColors.of(context).surface,
+            headerBackgroundColor: FcAppColors.of(context).surface,
+            titleColor: FcAppColors.of(context).textPrimary,
+            textColor: FcAppColors.of(context).textSecondary,
             onConfirmBtnTap: () {
               Navigator.of(context).pop(); // Dismiss alert
               Navigator.of(context).pop(); // Go back to login
@@ -55,13 +62,17 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             type: QuickAlertType.error,
             title: "Error",
             text: state.message,
+            backgroundColor: FcAppColors.of(context).surface,
+            headerBackgroundColor: FcAppColors.of(context).surface,
+            titleColor: FcAppColors.of(context).textPrimary,
+            textColor: FcAppColors.of(context).textSecondary,
           );
         }
       },
       child: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Scaffold(
-          backgroundColor: Colors.white,
+          backgroundColor: colors.surface,
           body: Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.0.w),
             child: Form(
@@ -91,16 +102,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                               text: 'Email Address',
                               isEmail: true,
                               textInputAction: TextInputAction.done,
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Please enter your email';
-                                }
-                                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                                    .hasMatch(v)) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
+                              validator: validateEmail,
                             ),
                             SizedBox(height: 24.0.h),
                             BlocBuilder<AuthCubit, AuthState>(

@@ -1,12 +1,13 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flash_chat_app/features/profile/screens/complete_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quickalert/quickalert.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flash_chat_app/core/theme/app_theme.dart';
 
 import '../../../core/routes/route_names.dart';
 import '../../../core/utils/page_transition.dart';
+import '../../../core/utils/validators.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text.dart';
 import '../../../shared/widgets/custom_text_form_field.dart';
@@ -50,6 +51,10 @@ class _SignupScreenState extends State<SignupScreen> {
         type: QuickAlertType.error,
         title: "Password Error",
         text: "Passwords do not match!",
+        backgroundColor: FcAppColors.of(context).surface,
+        headerBackgroundColor: FcAppColors.of(context).surface,
+        titleColor: FcAppColors.of(context).textPrimary,
+        textColor: FcAppColors.of(context).textSecondary,
       );
       return;
     }
@@ -72,20 +77,15 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) async {
         if (state is AuthLoggedIn) {
-          final userDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(state.user.uid)
-              .get();
-
-          // Check for a complete profile
-          final profileData = userDoc.data();
-          if (userDoc.exists &&
-              profileData != null &&
-              profileData['firstName'] != null &&
-              profileData['firstName'].isNotEmpty) {
+          // state.user already carries the profile from the same Firestore
+          // doc (fetched inside AuthService), so no fragile second read:
+          // a completed profile goes home, anything else resumes on the
+          // complete-profile screen. Never throws, even fully offline.
+          if (state.user.firstName.isNotEmpty) {
             Navigator.pushReplacement(
                 context,
                 PageRouteBuilder(
@@ -93,6 +93,8 @@ class _SignupScreenState extends State<SignupScreen> {
                   transitionsBuilder: PageTransition.slideFromRight,
                 ));
           } else {
+            // No completed profile: continue the sign-up on the profile
+            // screen instead of silently landing on the home screen.
             Navigator.pushReplacement(
               context,
               PageRouteBuilder(
@@ -110,6 +112,10 @@ class _SignupScreenState extends State<SignupScreen> {
             type: QuickAlertType.error,
             title: "Sign Up Failed",
             text: state.message,
+            backgroundColor: FcAppColors.of(context).surface,
+            headerBackgroundColor: FcAppColors.of(context).surface,
+            titleColor: FcAppColors.of(context).textPrimary,
+            textColor: FcAppColors.of(context).textSecondary,
           );
         }
       },
@@ -117,7 +123,7 @@ class _SignupScreenState extends State<SignupScreen> {
         onTap: () => FocusScope.of(context).unfocus(),
         child: Scaffold(
           resizeToAvoidBottomInset: true,
-          backgroundColor: Colors.white,
+          backgroundColor: colors.surface,
           body: Padding(
             padding: EdgeInsets.symmetric(horizontal: 24.0.w),
             child: Form(
@@ -148,16 +154,7 @@ class _SignupScreenState extends State<SignupScreen> {
                               text: 'Email Address',
                               isEmail: true,
                               textInputAction: TextInputAction.next,
-                              validator: (v) {
-                                if (v == null || v.isEmpty) {
-                                  return 'Please enter your email';
-                                }
-                                if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
-                                    .hasMatch(v)) {
-                                  return 'Please enter a valid email';
-                                }
-                                return null;
-                              },
+                              validator: validateEmail,
                             ),
                             SizedBox(height: 8.0.h),
                             CustomTextFormField(
@@ -220,17 +217,17 @@ class _SignupScreenState extends State<SignupScreen> {
                               children: [
                                 Expanded(
                                     child:
-                                    Divider(color: Colors.grey.shade400)),
+                                    Divider(color: colors.divider)),
                                 Padding(
                                     padding:
                                     EdgeInsets.symmetric(horizontal: 8.0.w),
                                     child: CustomText(
                                         text: 'OR',
-                                        textColor: Colors.grey,
+                                        textColor: colors.textWeak,
                                         fontSize: 16.sp)),
                                 Expanded(
                                     child:
-                                    Divider(color: Colors.grey.shade400)),
+                                    Divider(color: colors.divider)),
                               ],
                             ),
                             SizedBox(height: 12.0.h),

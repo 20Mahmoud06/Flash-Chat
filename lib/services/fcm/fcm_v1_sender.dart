@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/services.dart';
 import 'package:googleapis_auth/auth_io.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as auth;
@@ -57,8 +56,6 @@ class FcmV1Sender {
 
     final url = Uri.parse('https://fcm.googleapis.com/v1/projects/$_projectId/messages:send');
 
-    const String channelId = 'flash_chat_custom_v10';
-
     final Map<String, String> dataPayload = {
       'type': chatType,
       'click_action': 'FLUTTER_NOTIFICATION_CLICK',
@@ -68,7 +65,7 @@ class FcmV1Sender {
 
     if (chatType == 'chat') {
       dataPayload['senderId'] = targetId;
-    } else {
+    } else if (chatType == 'group_chat') {
       dataPayload['groupId'] = targetId;
     }
 
@@ -76,25 +73,34 @@ class FcmV1Sender {
       dataPayload.addAll(extraData);
     }
 
+    // Chat pushes are sent DATA-ONLY on Android: the plugin's manifest
+    // FlutterFirebaseMessagingService shadows the FCM SDK's rendering service
+    // (its onMessageReceived is a no-op), so the system never displays the
+    // `notification` block when the app is closed. A custom native service
+    // (FlashChatFirebaseMessagingService) renders instead. On iOS the system
+    // renders the alert from `aps` even when the app is terminated, so the
+    // alert (plus sound/badge/content-available) is delivered through APNs.
     final payload = {
       "message": {
         "token": token,
-        if (chatType != 'call')
-          "notification": {
-            "title": title,
-            "body": body,
-          },
         "android": {
-          "priority": "HIGH",
-          if (chatType != 'call')
-            "notification": {
-              "channel_id": channelId,
-            }
+          "priority": "HIGH"
         },
         "apns": {
           "payload": {
             "aps": {
-              "content-available": 1
+              "content-available": 1,
+              if (chatType != 'call') ...{
+                "sound": "alert.wav",
+                "badge": 1,
+                // On iOS the system renders this alert even when the app is
+                // terminated, so chat notifications always reach the lock
+                // screen without relying on a background launch.
+                "alert": {
+                  "title": title,
+                  "body": body,
+                }
+              }
             }
           }
         },

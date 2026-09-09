@@ -4,6 +4,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:quickalert/quickalert.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
+import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/validators.dart';
 import '../../../models/user_model.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text.dart';
@@ -67,109 +69,160 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
     final newBio = _bioController.text.trim();
     context.read<ProfileCubit>().updateUserProfile(
-      originalUser: widget.user,
-      newFirstName: _firstNameController.text.trim(),
-      newLastName: _lastNameController.text.trim(),
-      newPhone: _phoneController.text.trim(),
-      newEmail: _emailController.text.trim(),
-      newEmoji: _selectedEmoji,
-      newBio: newBio.isNotEmpty ? newBio : null,
-    );
+          originalUser: widget.user,
+          newFirstName: _firstNameController.text.trim(),
+          newLastName: _lastNameController.text.trim(),
+          newPhone: _phoneController.text.trim(),
+          newEmail: _emailController.text.trim(),
+          newEmoji: _selectedEmoji,
+          newBio: newBio.isNotEmpty ? newBio : null,
+        );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
     return BlocProvider(
       create: (context) => ProfileCubit(),
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          iconTheme: const IconThemeData(color: Colors.white),
-          backgroundColor: Colors.lightBlueAccent,
-          title: const CustomText(text:'Edit Profile',textColor: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        body: BlocConsumer<ProfileCubit, ProfileState>(
-          listener: (context, state) {
-            if (state is ProfileUpdateSuccess) {
-              QuickAlert.show(
-                context: context,
-                type: QuickAlertType.success,
-                title: 'Success!',
-                text: state.message,
-                barrierDismissible: false,
-                onConfirmBtnTap: () {
-                  Navigator.of(context).pop();
-                  Navigator.of(context).pop();
-                },
-              );
-            }
-            if (state is ProfileError) {
-              QuickAlert.show(context: context, type: QuickAlertType.error, title: 'Update Failed', text: state.message);
-            }
-          },
-          builder: (context, state) {
-            return Form(
-              key: _formKey,
-              child: ListView(
-                padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
-                children: [
-                  Center(
-                    child: GestureDetector(
-                      onTap: _pickEmoji,
-                      child: Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 60.r,
-                            backgroundColor: Colors.lightBlue.shade50,
-                            child: _selectedEmoji != null
-                                ? Text(_selectedEmoji!, style: TextStyle(fontSize: 60.sp))
-                                : Icon(Icons.add_reaction_outlined, size: 60.sp, color: Colors.lightBlue.shade200),
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: CircleAvatar(
-                              radius: 20.r,
-                              backgroundColor: Colors.lightBlueAccent,
-                              child: Icon(Icons.edit, color: Colors.white, size: 20.r),
+      child: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Scaffold(
+          backgroundColor: colors.surface,
+          appBar: AppBar(
+            iconTheme: const IconThemeData(color: Colors.white),
+            backgroundColor: Colors.lightBlueAccent,
+            title: const CustomText(
+                text: 'Edit Profile',
+                textColor: Colors.white,
+                fontWeight: FontWeight.bold),
+          ),
+          body: BlocConsumer<ProfileCubit, ProfileState>(
+            listener: (context, state) {
+              if (state is ProfileUpdateSuccess) {
+                QuickAlert.show(
+                  context: context,
+                  type: QuickAlertType.success,
+                  title: 'Success!',
+                  text: state.message,
+                  barrierDismissible: false,
+                  backgroundColor: FcAppColors.of(context).surface,
+                  headerBackgroundColor: FcAppColors.of(context).surface,
+                  titleColor: FcAppColors.of(context).textPrimary,
+                  textColor: FcAppColors.of(context).textSecondary,
+                  onConfirmBtnTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pop();
+                  },
+                );
+              }
+              if (state is ProfileError) {
+                QuickAlert.show(
+                  context: context,
+                  type: QuickAlertType.error,
+                  title: 'Update Failed',
+                  text: state.message,
+                  backgroundColor: FcAppColors.of(context).surface,
+                  headerBackgroundColor: FcAppColors.of(context).surface,
+                  titleColor: FcAppColors.of(context).textPrimary,
+                  textColor: FcAppColors.of(context).textSecondary,
+                );
+              }
+            },
+            builder: (context, state) {
+              return Form(
+                key: _formKey,
+                child: ListView(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
+                  children: [
+                    Center(
+                      child: GestureDetector(
+                        onTap: _pickEmoji,
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 60.r,
+                              backgroundColor: colors.avatarBackground,
+                              child: _selectedEmoji != null
+                                  ? Text(_selectedEmoji!,
+                                      style: TextStyle(fontSize: 60.sp))
+                                  : Icon(Icons.add_reaction_outlined,
+                                      size: 60.sp,
+                                      color: Colors.lightBlue.shade200),
                             ),
-                          ),
-                        ],
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: CircleAvatar(
+                                radius: 20.r,
+                                backgroundColor: Colors.lightBlueAccent,
+                                child: Icon(Icons.edit,
+                                    color: Colors.white, size: 20.r),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  SizedBox(height: 32.h),
-                  CustomTextFormField(controller: _firstNameController, text: 'First Name', validator: (v) => v!.trim().isEmpty ? 'Required' : null),
-                  SizedBox(height: 16.h),
-                  CustomTextFormField(controller: _lastNameController, text: 'Last Name', validator: (v) => v!.trim().isEmpty ? 'Required' : null),
-                  SizedBox(height: 16.h),
-                  CustomTextFormField(controller: _phoneController, text: 'Phone Number', keyboardType: TextInputType.phone, validator: (v) => v!.trim().isEmpty ? 'Required' : null),
-                  SizedBox(height: 16.h),
-                  CustomTextFormField(controller: _emailController, text: 'Email Address', isEmail: true, validator: (v) => v!.trim().isEmpty ? 'Required' : null),
-                  SizedBox(height: 16.h),
-                  CustomTextFormField(
-                    controller: _bioController,
-                    text: 'Bio',
-                    hintText: 'Add your bio (optional)',
-                    minLines: 1,
-                    maxLines: 4,
-                    keyboardType: TextInputType.multiline,
-                    validator: (String? p1) {
-                      return null;
-                    },
-                  ),
-                  SizedBox(height: 40.h),
-                  state is ProfileLoading
-                      ? const Center(child: CircularProgressIndicator(color: Colors.lightBlueAccent))
-                      : CustomButton(
-                    onPressed: () => _saveProfile(context),
-                    buttonColor: Colors.lightBlueAccent,
-                    child: CustomText(text: 'Save Changes', textColor: Colors.white, fontSize: 18.sp),
-                  ),
-                ],
-              ),
-            );
-          },
+                    SizedBox(height: 32.h),
+                    CustomTextFormField(
+                        controller: _firstNameController,
+                        text: 'First Name',
+                        validator: (v) =>
+                            v!.trim().isEmpty ? 'Required' : null),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                        controller: _lastNameController,
+                        text: 'Last Name',
+                        validator: (v) =>
+                            v!.trim().isEmpty ? 'Required' : null),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                        controller: _phoneController,
+                        text: 'Phone Number',
+                        keyboardType: TextInputType.phone,
+                        validator: validatePhone),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                        controller: _emailController,
+                        text: 'Email Address',
+                        isEmail: true,
+                        validator: validateEmail),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                      controller: _bioController,
+                      text: 'Bio',
+                      hintText: 'Add your bio (optional)',
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.multiline,
+                      maxLetters: 70,
+                      validator: (String? p1) {
+                        final bioLength = p1?.trim().length ?? 0;
+                        if (bioLength > 70) {
+                          return 'Bio must be 70 characters or less';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 40.h),
+                    state is ProfileLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: Colors.lightBlueAccent))
+                        : CustomButton(
+                            onPressed: () => _saveProfile(context),
+                            buttonColor: Colors.lightBlueAccent,
+                            child: CustomText(
+                                text: 'Save Changes',
+                                textColor: Colors.white,
+                                fontSize: 18.sp),
+                          ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
       ),
     );

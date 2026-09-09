@@ -43,7 +43,15 @@
 	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Flash Chat saves photos and videos you download to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Flash Chat needs access to your photo library so you can select and send photos.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>
