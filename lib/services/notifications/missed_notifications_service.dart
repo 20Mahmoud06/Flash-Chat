@@ -21,7 +21,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// notifications for the ones that:
 ///   * are not from the current user,
 ///   * are not from the currently-open chat / group,
-///   * are from a conversation the user has not blocked.
+///   * are from a conversation the user has not blocked,
+///   * have NOT already been read (status != 'seen'),
+///   * are NOT call-history entries (those are handled by the call stack).
 ///
 /// A per-conversation "last handled message timestamp" is kept in
 /// SharedPreferences. Each time a message is handled here (or shown by the
@@ -230,7 +232,7 @@ class MissedNotificationsService {
       if (peerId.isEmpty) continue;
 
       final hadBaseline = lastHandled(peerId, isGroup: false) > 0;
-      final missed = await _missedMessages(
+      final result = await _missedMessages(
         collectionPath: 'chats',
         chatId: chat.id,
         myUid: myUid,
@@ -238,22 +240,25 @@ class MissedNotificationsService {
         limit: _perConversationLimit,
       );
 
-      if (missed.isEmpty) continue;
+      // Always advance the watermark to the latest raw inbound timestamp, even
+      // if all messages were already read (seen). This prevents the same window
+      // from being re-queried on every subsequent app open.
+      if (result.latestInboundTimestamp != null) {
+        await recordHandled(peerId,
+            isGroup: false, timestamp: result.latestInboundTimestamp);
+      }
+
+      if (result.notifiable.isEmpty) continue;
 
       // Never notify the conversation the user is currently reading.
-      if (peerId == activeChatUserId) {
-        await _advanceFromMessage(peerId, missed.first, isGroup: false);
-        continue;
-      }
+      if (peerId == activeChatUserId) continue;
+
       // Respect blocking.
-      if (await _shouldSkip(missed.first.senderId)) {
-        await _advanceFromMessage(peerId, missed.first, isGroup: false);
-        continue;
-      }
+      if (await _shouldSkip(result.notifiable.first.senderId)) continue;
 
       // One notification per chat showing the newest message (the same
       // per-conversation id Android replaces automatically for older ones).
-      final latest = missed.first;
+      final latest = result.notifiable.first;
       if (!await _shouldNotify(
         peerId: peerId,
         isGroup: false,
@@ -271,8 +276,6 @@ class MissedNotificationsService {
             ? latest.senderName!
             : 'New message',
       );
-      // Mark the newest message handled so older ones are never re-notified.
-      await _advanceFromMessage(peerId, latest, isGroup: false);
     }
   }
 
@@ -283,48 +286,52 @@ class MissedNotificationsService {
         .get();
 
     for (final group in groups.docs) {
-      final data = group.data();
-      final hiddenFor = (data['hiddenFor'] as List<dynamic>?) ?? const [];
-      if (hiddenFor.contains(myUid)) continue;
-
-      final memberUids =
-          (data['memberUids'] as List<dynamic>?) ?? const <dynamic>[];
-      if (!memberUids.map((u) => u.toString()).contains(myUid)) continue;
-
+      final groupData = group.data();
       final groupId = group.id;
-      final rawName = data['name'] as String?;
-      final groupName = (rawName != null && rawName.isNotEmpty)
-          ? rawName
-          : 'New Group Message';
+      final groupName = groupData['name'] as String? ?? 'Group';
+
+      // Fetch the group's lastSeen timestamp for this user from the group doc
+      // (the same watermark used by the unread badge). This is the authoritative
+      // "user has read up to here" signal for groups.
+      final lastSeenMap =
+          (groupData['lastSeen'] as Map<String, dynamic>?) ?? const {};
+      final groupLastSeenTs = lastSeenMap[myUid];
+      final int? groupLastSeenMs = groupLastSeenTs is Timestamp
+          ? groupLastSeenTs.millisecondsSinceEpoch
+          : null;
 
       final hadBaseline = lastHandled(groupId, isGroup: true) > 0;
-      final missed = await _missedMessages(
+      final result = await _missedMessages(
         collectionPath: 'groups',
         chatId: groupId,
         myUid: myUid,
         lastTs: lastHandled(groupId, isGroup: true),
         limit: _perConversationLimit,
+        groupLastSeenMs: groupLastSeenMs,
       );
 
-      if (missed.isEmpty) continue;
+      // Always advance the watermark to the latest raw inbound timestamp.
+      if (result.latestInboundTimestamp != null) {
+        await recordHandled(groupId,
+            isGroup: true, timestamp: result.latestInboundTimestamp);
+      }
+
+      if (result.notifiable.isEmpty) continue;
 
       // Never notify the group the user is currently reading.
-      if (groupId == activeGroupId) {
-        await _advanceFromMessage(groupId, missed.first, isGroup: true);
-        continue;
-      }
+      if (groupId == activeGroupId) continue;
+
       // Respect blocking. A blocked 1-to-1 contact must NOT silence their
       // messages in the groups they're a member of, so the per-sender chat
       // block is deliberately not consulted here.
-      final senderId = missed.first.senderId;
+      final senderId = result.notifiable.first.senderId;
       if (senderId.isNotEmpty &&
           await BlockService.isEitherBlocked(senderId)) {
-        await _advanceFromMessage(groupId, missed.first, isGroup: true);
         continue;
       }
 
       // One notification per group showing the newest message.
-      final latest = missed.first;
+      final latest = result.notifiable.first;
       if (!await _shouldNotify(
         peerId: groupId,
         isGroup: true,
@@ -344,19 +351,30 @@ class MissedNotificationsService {
         title: groupName,
         bodyPrefix: '$senderName: ',
       );
-      // Mark the newest message handled so older ones are never re-notified.
-      await _advanceFromMessage(groupId, latest, isGroup: true);
     }
   }
 
-  /// Returns messages that are genuinely backfill-notifyable (sent by someone
-  /// else, not deleted) and newer than the stored watermark.
-  Future<List<MessageModel>> _missedMessages({
+  /// Queries messages that are genuinely backfill-notifyable:
+  ///   - sent by someone else (not [myUid]),
+  ///   - not deleted,
+  ///   - not already read (status != 'seen') — 1-on-1 chats only,
+  ///   - not call-history entries ([MessageType.call] / [MessageType.callActive]),
+  ///   - newer than the stored watermark [lastTs],
+  ///   - for groups: newer than the group's [groupLastSeenMs] watermark.
+  ///
+  /// Returns a [_BackfillResult] with:
+  ///   * [_BackfillResult.notifiable] — the filtered, notification-eligible messages.
+  ///   * [_BackfillResult.latestInboundTimestamp] — the timestamp of the newest
+  ///     inbound (non-self, non-deleted) message regardless of seen/call status.
+  ///     The caller MUST advance the watermark to this even when [notifiable] is
+  ///     empty, so the same window is never re-queried on later app opens.
+  Future<_BackfillResult> _missedMessages({
     required String collectionPath,
     required String chatId,
     required String myUid,
     required int lastTs,
     required int limit,
+    int? groupLastSeenMs,
   }) async {
     Query query = _firestore
         .collection(collectionPath)
@@ -371,14 +389,52 @@ class MissedNotificationsService {
     }
 
     final snapshot = await query.get();
-    final missed = <MessageModel>[];
+    final notifiable = <MessageModel>[];
+    DateTime? latestInboundTs;
+
     for (final doc in snapshot.docs) {
       final message = MessageModel.fromFirestore(doc);
-      if (message.isDeleted) continue;
+
+      // Skip own messages — we sent it, no need to notify ourselves.
       if (message.senderId == myUid) continue;
-      missed.add(message);
+
+      // Skip globally deleted messages.
+      if (message.isDeleted) continue;
+
+      // Track the latest raw inbound timestamp (for watermark advancement),
+      // regardless of whether we will notify about it.
+      final msgDate = message.timestamp.toDate();
+      if (latestInboundTs == null || msgDate.isAfter(latestInboundTs)) {
+        latestInboundTs = msgDate;
+      }
+
+      // Skip call-history entries. Calls are handled by the call stack
+      // (missed-call notification, ring + CallKit). Notifying them here too
+      // would show spurious "📞 Voice call · Missed" banners every app open.
+      if (message.messageType == MessageType.call ||
+          message.messageType == MessageType.callActive) {
+        continue;
+      }
+
+      // Skip messages the user already read in the chat screen (1-on-1).
+      // The chat cubit sets status = 'seen' when the chat is opened, so any
+      // message with this status is already visible to the user.
+      if (message.status == 'seen') continue;
+
+      // Skip group messages the user already read, using the Firestore
+      // `lastSeen[uid]` watermark (same one driving the unread badge).
+      if (groupLastSeenMs != null &&
+          message.timestamp.millisecondsSinceEpoch <= groupLastSeenMs) {
+        continue;
+      }
+
+      notifiable.add(message);
     }
-    return missed;
+
+    return _BackfillResult(
+      notifiable: notifiable,
+      latestInboundTimestamp: latestInboundTs,
+    );
   }
 
   /// Whether a 1-to-1 conversation should be skipped because either side
@@ -457,4 +513,25 @@ class MissedNotificationsService {
       debugPrint('MissedNotifications: notified [$peerId]: $body');
     }
   }
+}
+
+/// Result of a [MissedNotificationsService._missedMessages] query.
+///
+/// Contains the messages that should trigger notifications ([notifiable]) and
+/// the latest raw inbound timestamp ([latestInboundTimestamp]) that the caller
+/// should always use to advance the per-conversation watermark — even when
+/// [notifiable] is empty (e.g. all messages were already seen).
+class _BackfillResult {
+  const _BackfillResult({
+    required this.notifiable,
+    required this.latestInboundTimestamp,
+  });
+
+  /// Messages eligible to show as notifications (not seen, not call-history).
+  final List<MessageModel> notifiable;
+
+  /// The newest inbound (non-self, non-deleted) message timestamp, regardless
+  /// of notification eligibility. `null` if the query returned no inbound
+  /// messages at all.
+  final DateTime? latestInboundTimestamp;
 }
