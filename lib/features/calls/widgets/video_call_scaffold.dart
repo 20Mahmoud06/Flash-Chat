@@ -118,6 +118,7 @@ class VideoCallScaffold extends StatelessWidget {
                   isCameraOff: isCameraOff,
                   ownAvatar: ownAvatar,
                   topOffset: MediaQuery.of(context).padding.top + 64,
+                  isSpeaking: speakingUids.contains(0),
                 ),
 
               // 3. TOP GLASSMORPHIC BAR

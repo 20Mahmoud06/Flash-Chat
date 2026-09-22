@@ -127,7 +127,7 @@ class VideoCallGridArea extends StatelessWidget {
                         ),
                       ),
                       child: const Icon(
-                        Icons.graphic_eq_rounded,
+                        Icons.mic_rounded,
                         color: Colors.white,
                         size: 13,
                       ),

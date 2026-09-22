@@ -36,7 +36,7 @@ class CallBloc extends Bloc<CallEvent, CallState> {
   /// Minimum per-user volume (0-255) before a participant can be considered
   /// "speaking". Filters out mic noise/ambience (a resting phone easily leaks
   /// 5-20) so the indicator only lights for actual speech.
-  static const int _speakingThreshold = 25;
+  static const int _speakingThreshold = 20;
 
   // ──────────────────────────────────────────────────────────────────────
   // PUBLIC API (preserves the app's existing call-management surface)
@@ -294,7 +294,13 @@ class CallBloc extends Bloc<CallEvent, CallState> {
       final current = state as CallEngineReady;
       final newMuted = !current.isMuted;
       _engine?.muteLocalAudioStream(newMuted);
-      emit(current.copyWith(isMuted: newMuted));
+      final updatedSpeaking = newMuted
+          ? (Set<int>.from(current.speakingUids)..remove(0))
+          : current.speakingUids;
+      emit(current.copyWith(
+        isMuted: newMuted,
+        speakingUids: updatedSpeaking,
+      ));
       CallNotifBridge.instance.updateMute(newMuted);
     }
   }
@@ -535,12 +541,17 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (state is CallEngineReady) {
       final current = state as CallEngineReady;
       final updatedMuted = Set<int>.from(current.mutedRemoteAudioUids);
+      final updatedSpeaking = Set<int>.from(current.speakingUids);
       if (event.muted) {
         updatedMuted.add(event.uid);
+        updatedSpeaking.remove(event.uid);
       } else {
         updatedMuted.remove(event.uid);
       }
-      emit(current.copyWith(mutedRemoteAudioUids: updatedMuted));
+      emit(current.copyWith(
+        mutedRemoteAudioUids: updatedMuted,
+        speakingUids: updatedSpeaking,
+      ));
     }
   }
 
@@ -551,34 +562,91 @@ class CallBloc extends Bloc<CallEvent, CallState> {
     if (state is! CallEngineReady) return;
     final current = state as CallEngineReady;
 
-    AudioVolumeInfo? loudestRemote;
-    AudioVolumeInfo? local;
+    int myUid = 0;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        myUid = _agoraUidFromFirebase(user.uid);
+      }
+    } catch (_) {}
+
+    // 1. Separate local vs remote speaker reports.
+    AudioVolumeInfo? localInfo;
+    final List<AudioVolumeInfo> remoteSpeakers = [];
+
     for (final s in event.speakers) {
       final uid = s.uid;
-      final volume = s.volume ?? 0;
-      if (volume < _speakingThreshold) continue;
-      if (uid == null || uid == 0) {
-        if (!current.isMuted && local == null) local = s;
-        continue;
-      }
-      if (!current.remoteUids.contains(uid) ||
-          current.mutedRemoteAudioUids.contains(uid)) {
-        continue;
-      }
-      if (loudestRemote == null || volume > (loudestRemote.volume ?? 0)) {
-        loudestRemote = s;
+      if (uid == null || uid == 0 || (myUid != 0 && uid == myUid)) {
+        localInfo ??= s;
+      } else {
+        remoteSpeakers.add(s);
       }
     }
 
-    final speaking = <int>{
-      if (loudestRemote != null)
-        loudestRemote.uid!
-      else if (local != null)
-        0,
-    };
-    if (speaking.length != current.speakingUids.length ||
-        !speaking.containsAll(current.speakingUids)) {
-      emit(current.copyWith(speakingUids: speaking));
+    // 2. Evaluate local speaking status.
+    // Agora triggers two independent callbacks:
+    // - One for local user (contains localInfo).
+    // - One for remote users (does NOT contain localInfo).
+    // If localInfo is present, update local speaking state based on VAD and volume.
+    // Otherwise, preserve the current local speaking state.
+    final bool hasLocalReport = localInfo != null;
+    final bool isLocalSpeaking;
+    if (hasLocalReport) {
+      if (current.isMuted) {
+        isLocalSpeaking = false;
+      } else {
+        final volume = localInfo.volume ?? 0;
+        final vad = localInfo.vad;
+        // VAD = 1 indicates genuine voice activity from the local user into the mic.
+        // If VAD is 0, local user is silent (e.g. ambient noise or speaker acoustic feedback).
+        if (vad != null) {
+          isLocalSpeaking = vad == 1 && volume >= _speakingThreshold;
+        } else {
+          isLocalSpeaking = volume >= _speakingThreshold;
+        }
+      }
+    } else {
+      isLocalSpeaking = current.speakingUids.contains(0);
+    }
+
+    // 3. Evaluate remote speaking status.
+    // If event.speakers is empty, Agora is signaling no remote user is speaking.
+    // If remoteSpeakers is not empty, Agora is reporting remote speaker volumes.
+    // If localInfo is present and remoteSpeakers is empty, this is a local-only
+    // callback from Agora, so we MUST preserve the remote speaking status.
+    final Set<int> newSpeaking = <int>{};
+    if (isLocalSpeaking) {
+      newSpeaking.add(0);
+    }
+
+    final bool isLocalOnlyCallback = hasLocalReport && remoteSpeakers.isEmpty;
+    if (isLocalOnlyCallback) {
+      // Preserve currently speaking remote users
+      for (final uid in current.speakingUids) {
+        if (uid != 0 &&
+            current.remoteUids.contains(uid) &&
+            !current.mutedRemoteAudioUids.contains(uid)) {
+          newSpeaking.add(uid);
+        }
+      }
+    } else {
+      // Fresh remote report: add all remote users whose volume is above threshold
+      for (final s in remoteSpeakers) {
+        final uid = s.uid;
+        if (uid == null) continue;
+        final volume = s.volume ?? 0;
+        if (volume >= _speakingThreshold &&
+            current.remoteUids.contains(uid) &&
+            !current.mutedRemoteAudioUids.contains(uid)) {
+          newSpeaking.add(uid);
+        }
+      }
+    }
+
+    // 4. Emit update only if speaking set changed.
+    if (newSpeaking.length != current.speakingUids.length ||
+        !newSpeaking.containsAll(current.speakingUids)) {
+      emit(current.copyWith(speakingUids: newSpeaking));
     }
   }
 

@@ -11,6 +11,7 @@ class VideoCallLocalPreview extends StatelessWidget {
   final bool isCameraOff;
   final String? ownAvatar;
   final double topOffset;
+  final bool isSpeaking;
 
   const VideoCallLocalPreview({
     super.key,
@@ -18,6 +19,7 @@ class VideoCallLocalPreview extends StatelessWidget {
     required this.isCameraOff,
     this.ownAvatar,
     required this.topOffset,
+    this.isSpeaking = false,
   });
 
   @override
@@ -31,8 +33,10 @@ class VideoCallLocalPreview extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.25),
-            width: 1.5,
+            color: isSpeaking
+                ? AppColors.speakingBorder
+                : Colors.white.withValues(alpha: 0.25),
+            width: isSpeaking ? 2.5 : 1.5,
           ),
           boxShadow: const [
             BoxShadow(

@@ -100,6 +100,9 @@ class VoiceCallDisplayArea extends StatelessWidget {
                         displayName: displayName,
                         avatarEmoji: avatarEmoji,
                         pulse: remoteUids.isEmpty,
+                        isSpeaking: !isGroup &&
+                            remoteUids.isNotEmpty &&
+                            speakingUids.contains(remoteUids.first),
                       ),
                       const SizedBox(height: 28),
                       CustomText(
@@ -133,11 +136,13 @@ class _PulsingAvatar extends StatefulWidget {
   final String displayName;
   final String? avatarEmoji;
   final bool pulse;
+  final bool isSpeaking;
 
   const _PulsingAvatar({
     required this.displayName,
     required this.avatarEmoji,
     required this.pulse,
+    this.isSpeaking = false,
   });
 
   @override
@@ -190,10 +195,11 @@ class _PulsingAvatarState extends State<_PulsingAvatar>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color:
-                      Colors.lightBlueAccent.withValues(alpha: 0.35),
-                  blurRadius: 36,
-                  spreadRadius: 8,
+                  color: widget.isSpeaking
+                      ? AppColors.speakingGlow
+                      : Colors.lightBlueAccent.withValues(alpha: 0.35),
+                  blurRadius: widget.isSpeaking ? 42 : 36,
+                  spreadRadius: widget.isSpeaking ? 10 : 8,
                 ),
               ],
             ),
@@ -215,8 +221,10 @@ class _PulsingAvatarState extends State<_PulsingAvatar>
             end: Alignment.bottomRight,
           ),
           border: Border.all(
-            color: Colors.white.withValues(alpha: 0.4),
-            width: 2.5,
+            color: widget.isSpeaking
+                ? AppColors.speakingBorder
+                : Colors.white.withValues(alpha: 0.4),
+            width: widget.isSpeaking ? 3.0 : 2.5,
           ),
         ),
         child: Center(

@@ -34,10 +34,12 @@ class GroupVoiceGridTile extends StatelessWidget {
         color: AppColors.callCardBg,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: isLocal
-              ? Colors.lightBlueAccent.withValues(alpha: 0.6)
-              : Colors.white.withValues(alpha: 0.12),
-          width: 1.5,
+          color: isSpeaking
+              ? AppColors.speakingBorder
+              : (isLocal
+                  ? Colors.lightBlueAccent.withValues(alpha: 0.6)
+                  : Colors.white.withValues(alpha: 0.12)),
+          width: isSpeaking ? 2.5 : 1.5,
         ),
         boxShadow: const [
           BoxShadow(
@@ -147,6 +149,28 @@ class GroupVoiceGridTile extends StatelessWidget {
               ],
             ),
           ),
+          // Speaking indicator badge (green mic)
+          if (isSpeaking)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  color: AppColors.speakingGlow,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.5),
+                    width: 1,
+                  ),
+                ),
+                child: const Icon(
+                  Icons.mic_rounded,
+                  color: Colors.white,
+                  size: 14,
+                ),
+              ),
+            ),
           // Mute indicator badge
           if (isMuted)
             Positioned(
