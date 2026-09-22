@@ -1,0 +1,12 @@
+// Flash Chat — Storage Rules
+// The app uses Cloudinary for all media uploads (images, video, voice).
+// Firebase Storage is NOT used. The bucket is locked down completely.
+// Consider removing the Storage bucket entirely in the Firebase console.
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

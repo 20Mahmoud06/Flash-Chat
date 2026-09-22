@@ -1,21 +1,48 @@
 import 'dart:async';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app.dart';
 import 'config/firebase_options.dart';
-import 'features/calls/cubit/call_cubit.dart';
+import 'features/calls/bloc/call_bloc.dart';
 import 'features/calls/services/call_notif.dart';
-import 'services/calls/callkit_event_handler.dart';
+import 'features/calls/services/callkit_event_handler.dart';
 import 'services/connectivity/connectivity_service.dart';
 import 'services/fcm/fcm_service.dart';
 import 'services/hms/hms_push_service.dart';
 import 'services/notifications/missed_notifications_service.dart';
 import 'services/presence/presence_service.dart';
-import 'shared/widgets/call_in_progress_pill.dart';
+import 'features/calls/widgets/call_in_progress_pill.dart';
+
+/// Activates Firebase App Check.
+///
+/// Release builds use strong attestation (Play Integrity on Android, App Attest
+/// with DeviceCheck fallback on iOS/macOS). Debug and profile builds use the
+/// debug provider so `flutter run` keeps working — the corresponding debug
+/// token (logged to the device console) must be registered in the Firebase
+/// console > App Check > Apps > (your app) > DEBUG TOKENS.
+///
+/// This is intentionally non-fatal: if App Check can't be activated (e.g. an
+/// unsupported platform), the rest of the app still boots. App Check only
+/// starts blocking traffic once each service is set to Enforce in the console.
+Future<void> _initializeFirebaseAppCheck() async {
+  try {
+    await FirebaseAppCheck.instance.activate(
+      androidProvider:
+          kReleaseMode ? AndroidProvider.playIntegrity : AndroidProvider.debug,
+      appleProvider: kReleaseMode
+          ? AppleProvider.appAttestWithDeviceCheckFallback
+          : AppleProvider.debug,
+    );
+    // Note: refreshing is on by default; kept explicit for clarity.
+    FirebaseAppCheck.instance.setTokenAutoRefreshEnabled(true);
+  } catch (e) {
+    debugPrint('Firebase App Check activation skipped: $e');
+  }
+}
 
 /// Background message handler
 ///
@@ -44,13 +71,8 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Configure Firestore settings
-  if (!kIsWeb) {
-    FirebaseFirestore.instance.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: 25 * 1024 * 1024,
-    );
-  }
+  // Attest that this is a genuine build of our app (Play Integrity / App Attest).
+  await _initializeFirebaseAppCheck();
 
   // Setup background message handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
@@ -60,10 +82,10 @@ void main() async {
   initCallKitEventHandler();
 
   // Sticky voice-call notification actions (native -> Dart): drive the same
-  // app-wide call cubit the call page uses, so the actions work even after
+  // app-wide call bloc the call page uses, so the actions work even after
   // the call page was popped (call minimized).
   CallNotifBridge.instance.onAction = (action, callId) {
-    final cubit = CallCubit.instance;
+    final cubit = CallBloc.instance;
     switch (action) {
       case CallNotifAction.mute:
         cubit.toggleMute();

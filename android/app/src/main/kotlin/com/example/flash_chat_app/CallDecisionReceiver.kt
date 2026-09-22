@@ -45,11 +45,14 @@ class CallDecisionReceiver : BroadcastReceiver() {
         // returns, which would kill the persisted decision mid-write.
         // goAsync() keeps the process alive (up to ~10s) for the worker thread.
         val pendingResult = goAsync()
+        Log.d(TAG, "Decision '$decision' for call $callId (group=$isGroup)")
         Thread {
             try {
                 val me = waitForSignedInUser()
                 if (me != null) {
+                    Log.d(TAG, "Auth restored for $me; persisting $decision")
                     persistDecisionWithRetry(callId, me, isGroup, decision)
+                    Log.d(TAG, "persistDecisionWithRetry returned for $callId")
                 } else {
                     Log.w(TAG, "No signed-in user; cannot persist $decision for $callId")
                 }
@@ -66,14 +69,16 @@ class CallDecisionReceiver : BroadcastReceiver() {
      * (full-screen-intent before the engine boots) the token restore can take
      * well over the old 2s budget on a mid-range device, which silently
      * dropped every accept/decline (see "decline does nothing" / "deep link
-     * doesn't work"). 120 x 100ms = 12s covers the slowest legit cold start.
+     * doesn't work"). Polls every 60ms so the write starts the instant auth
+     * resumes; 120 attempts caps at ~7.2s wall, which stays inside the ~10s
+     * goAsync() budget before the system freezes the receiver.
      */
     private fun waitForSignedInUser(): String? {
         val auth = FirebaseAuth.getInstance()
         var me = auth.currentUser?.uid
         var attempts = 0
         while (me == null && attempts < 120) {
-            Thread.sleep(100)
+            Thread.sleep(60)
             me = auth.currentUser?.uid
             attempts++
         }
@@ -111,7 +116,17 @@ class CallDecisionReceiver : BroadcastReceiver() {
                 // Accepting always flips the call to accepted (matches the Dart
                 // event handler) and joins the participant, so the accepted-call
                 // recovery and the caller's side both see it.
-                if (status != "ringing") {
+                //
+                // The status guard is loosened for GROUP calls: when another
+                // member already joined, the doc is already `accepted` — that
+                // must NOT stop a second/third member from joining through the
+                // native ring. Only a genuinely terminal call is rejected.
+                if (isGroup) {
+                    if (status != "ringing" && status != "accepted") {
+                        Log.d(TAG, "Not accepting group call $callId from $status")
+                        return
+                    }
+                } else if (status != "ringing") {
                     Log.d(TAG, "Not accepting $callId from $status")
                     return
                 }

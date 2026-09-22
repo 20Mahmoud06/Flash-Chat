@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:flash_chat_app/core/constants/app_colors.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 
 class CallEndedOverlay extends StatefulWidget {
@@ -36,7 +38,8 @@ class CallEndedOverlay extends StatefulWidget {
     'rejected': 'The recipient declined the call',
     'timeout': 'No answer from recipient\nCall timed out',
     'no_answer': 'No answer from recipient\nCall timed out',
-    'unavailable': 'The user is offline or not reachable\nPlease try again later',
+    'unavailable':
+        'The user is offline or not reachable\nPlease try again later',
     'offline': 'The user is offline or not reachable\nPlease try again later',
     'missed': 'You missed a call',
     'failed': 'We could not connect your call\nPlease try again',
@@ -60,18 +63,18 @@ class CallEndedOverlay extends StatefulWidget {
   };
 
   static const Map<String, Color> _colors = {
-    'cancelled': Color(0xFFFF5252),
-    'busy': Color(0xFFFF7675),
-    'declined': Color(0xFFFF7675),
-    'rejected': Color(0xFFFF7675),
-    'timeout': Color(0xFFFDCB6E),
-    'no_answer': Color(0xFFFDCB6E),
-    'unavailable': Color(0xFFFDCB6E),
-    'offline': Color(0xFFFDCB6E),
-    'missed': Color(0xFFFDCB6E),
-    'failed': Color(0xFFFF5252),
-    'ended': Color(0xFFFF5252),
-    'left': Color(0xFF4FC3F7),
+    'cancelled': AppColors.callErrorRed,
+    'busy': AppColors.callStatusSalmon,
+    'declined': AppColors.callStatusSalmon,
+    'rejected': AppColors.callStatusSalmon,
+    'timeout': AppColors.callStatusAmber,
+    'no_answer': AppColors.callStatusAmber,
+    'unavailable': AppColors.callStatusAmber,
+    'offline': AppColors.callStatusAmber,
+    'missed': AppColors.callStatusAmber,
+    'failed': AppColors.callErrorRed,
+    'ended': AppColors.callErrorRed,
+    'left': AppColors.sky,
   };
 
   static String statusLabel(String? reason) {
@@ -129,7 +132,7 @@ class _CallEndedOverlayState extends State<CallEndedOverlay> {
   }
 
   Color _getColor() {
-    return CallEndedOverlay._colors[widget.reason] ?? const Color(0xFFFF5252);
+    return CallEndedOverlay._colors[widget.reason] ?? AppColors.callErrorRed;
   }
 
   String _getTitle() {
@@ -178,7 +181,7 @@ class _CallEndedOverlayState extends State<CallEndedOverlay> {
                 margin: const EdgeInsets.symmetric(horizontal: 40),
                 padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E1E2E).withValues(alpha: 0.92),
+                  color: AppColors.callOverlay.withValues(alpha: 0.92),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.15),
@@ -215,23 +218,19 @@ class _CallEndedOverlayState extends State<CallEndedOverlay> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Text(
-                      _getTitle(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    CustomText(
+                      text: _getTitle(),
+                      textColor: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      _getSubtitle(),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
+                    CustomText(
+                      text: _getSubtitle(),
+                      textColor: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 14,
+                      height: 1.4,
                       textAlign: TextAlign.center,
                     ),
                     if (widget.duration != null &&
@@ -259,13 +258,12 @@ class _CallEndedOverlayState extends State<CallEndedOverlay> {
                               size: 16,
                             ),
                             const SizedBox(width: 8),
-                            Text(
-                              'Duration: ${_formatDuration(widget.duration!)}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            CustomText(
+                              text:
+                                  'Duration: ${_formatDuration(widget.duration!)}',
+                              textColor: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
                             ),
                           ],
                         ),
@@ -285,14 +283,13 @@ class _CallEndedOverlayState extends State<CallEndedOverlay> {
                             ),
                           ),
                         ),
-                        icon: Icon(Icons.check_rounded, color: iconColor, size: 20),
-                        label: const Text(
-                          'OK',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        icon: Icon(Icons.check_rounded,
+                            color: iconColor, size: 20),
+                        label: const CustomText(
+                          text: 'OK',
+                          textColor: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
                         ),
                         onPressed: widget.onDismiss,
                       ),

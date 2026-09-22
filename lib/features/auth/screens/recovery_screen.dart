@@ -40,6 +40,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     final colors = FcAppColors.of(context);
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
+        // Only react while this screen is the current route: it is pushed
+        // on top of Login, whose listener must not also handle its states.
+        if (ModalRoute.of(context)?.isCurrent != true) return;
         if (state is AuthLoading) {
         } else if (state is AuthPasswordResetSent) {
           QuickAlert.show(
@@ -82,7 +85,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   return SingleChildScrollView(
                     child: ConstrainedBox(
                       constraints:
-                      BoxConstraints(minHeight: constraints.maxHeight),
+                          BoxConstraints(minHeight: constraints.maxHeight),
                       child: IntrinsicHeight(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,

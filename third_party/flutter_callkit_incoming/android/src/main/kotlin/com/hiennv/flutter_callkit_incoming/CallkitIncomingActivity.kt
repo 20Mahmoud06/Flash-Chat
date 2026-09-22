@@ -303,7 +303,13 @@ class CallkitIncomingActivity : Activity() {
         val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
         if (data?.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_NATIVE_PUSH, false) == true) {
             soundManager = CallkitSoundPlayerManager(this)
-            soundManager?.play(data)
+            // A MediaPlayer / audio-service failure must never crash the ring
+            // screen (the OS would show "Flash Chat keeps stopping").
+            try {
+                soundManager?.play(data)
+            } catch (t: Throwable) {
+                Log.e("CallkitIncoming", "Ring playback failed", t)
+            }
         }
         // Same id bucket as NotificationChannels.callNotificationId().
         data?.getString(CallkitConstants.EXTRA_CALLKIT_ID)?.let { callId ->

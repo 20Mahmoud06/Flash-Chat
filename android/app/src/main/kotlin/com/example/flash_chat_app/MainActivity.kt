@@ -70,6 +70,18 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         applicationContextRef = applicationContext
+
+        // When the user taps "Accept" on the native ring screen while the
+        // phone is locked, TransparentActivity hands off to MainActivity.
+        // The Flutter engine takes 1-3 s to boot; during that gap the
+        // keyguard blocks the view, forcing the user to unlock before they
+        // can join the call. Setting the lock-screen flags HERE — before
+        // the engine starts — closes that gap so the call page renders
+        // directly over the keyguard the moment it appears.
+        if (isCallRelatedIntent(intent)) {
+            setCallMode(true)
+        }
+
         // Create the notification channel NOW (before the Flutter engine and
         // flutter_local_notifications run) so the custom file-based sound is
         // baked in on every device — channel sound is frozen at first creation.
@@ -88,11 +100,39 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         HmsPushBridge.attachTap(intent)
+        // Warm start: if a call-accept trampoline arrives while the activity
+        // is already alive, show over the lock screen immediately.
+        if (isCallRelatedIntent(intent)) {
+            setCallMode(true)
+        }
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         HmsPushBridge.registerChannels(flutterEngine.dartExecutor.binaryMessenger)
+
+        // Call-guard bridge (`flash_chat/call_guard`): Dart persists handled
+        // 1-to-1 call ids here too so a re-delivered FCM/HMS push — after a
+        // foreground ring/decline/timeout — cannot re-ring on the native side.
+        val callGuardChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "flash_chat/call_guard"
+        )
+        callGuardChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "markHandled" -> {
+                    val callId = call.arguments as? String
+                    if (callId != null) {
+                        CallGuardStore.markHandled(applicationContext, callId)
+                    }
+                    result.success(null)
+                }
+                "getHandled" ->
+                    result.success(CallGuardStore.read(applicationContext).toList())
+                else -> result.notImplemented()
+            }
+        }
+
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel?.setMethodCallHandler { call, result ->
             when (call.method) {
@@ -225,6 +265,19 @@ class MainActivity : FlutterActivity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    /**
+     * True when the intent was sent by the call-accept trampoline
+     * (TransparentActivity) or the cold-start call recovery path. The action
+     * string is `${packageName}.com.hiennv.flutter_callkit_incoming.ACTION_CALL_ACCEPT`
+     * — we just check for the "ACTION_CALL_ACCEPT" suffix to stay decoupled
+     * from the exact package prefix.
+     */
+    private fun isCallRelatedIntent(intent: Intent?): Boolean {
+        val action = intent?.action ?: return false
+        return action.endsWith("ACTION_CALL_ACCEPT") ||
+            action.endsWith("ACTION_CALL_INCOMING")
     }
 
     /**

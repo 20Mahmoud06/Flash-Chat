@@ -1,5 +1,6 @@
-﻿import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
+import 'package:flash_chat_app/core/constants/app_colors.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
+import 'package:flutter/material.dart';
 
 class VideoCallAvatarPlaceholder extends StatefulWidget {
   final String displayName;
@@ -24,8 +25,7 @@ class VideoCallAvatarPlaceholder extends StatefulWidget {
       _VideoCallAvatarPlaceholderState();
 }
 
-class _VideoCallAvatarPlaceholderState
-    extends State<VideoCallAvatarPlaceholder>
+class _VideoCallAvatarPlaceholderState extends State<VideoCallAvatarPlaceholder>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -91,18 +91,17 @@ class _VideoCallAvatarPlaceholderState
                   ],
                 ),
                 child: Center(
-                  child: widget.avatarEmoji != null && widget.avatarEmoji!.isNotEmpty
-                      ? Text(
-                          widget.avatarEmoji!,
-                          style: const TextStyle(fontSize: 22),
+                  child: widget.avatarEmoji != null &&
+                          widget.avatarEmoji!.isNotEmpty
+                      ? CustomText(
+                          text: widget.avatarEmoji!,
+                          fontSize: 22,
                         )
-                      : Text(
-                          _getInitials(widget.displayName),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
+                      : CustomText(
+                          text: _getInitials(widget.displayName),
+                          textColor: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
                         ),
                 ),
               ),
@@ -117,13 +116,11 @@ class _VideoCallAvatarPlaceholderState
                   ),
                   const SizedBox(width: 4),
                   Flexible(
-                    child: Text(
-                      widget.displayName,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    child: CustomText(
+                      text: widget.displayName,
+                      textColor: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -198,18 +195,17 @@ class _VideoCallAvatarPlaceholderState
                         ),
                       ),
                       child: Center(
-                        child: widget.avatarEmoji != null && widget.avatarEmoji!.isNotEmpty
-                            ? Text(
-                                widget.avatarEmoji!,
-                                style: const TextStyle(fontSize: 50),
+                        child: widget.avatarEmoji != null &&
+                                widget.avatarEmoji!.isNotEmpty
+                            ? CustomText(
+                                text: widget.avatarEmoji!,
+                                fontSize: 50,
                               )
-                            : Text(
-                                _getInitials(widget.displayName),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 40,
-                                ),
+                            : CustomText(
+                                text: _getInitials(widget.displayName),
+                                textColor: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 40,
                               ),
                       ),
                     ),
@@ -219,7 +215,7 @@ class _VideoCallAvatarPlaceholderState
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF2D2D44),
+                          color: AppColors.callAvatarBg,
                           shape: BoxShape.circle,
                           border: Border.all(
                             color: Colors.white.withValues(alpha: 0.4),
@@ -243,14 +239,12 @@ class _VideoCallAvatarPlaceholderState
                 ),
               ),
               const SizedBox(height: 24),
-              Text(
-                widget.displayName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
+              CustomText(
+                text: widget.displayName,
+                textColor: Colors.white,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
               ),
               const SizedBox(height: 10),
               Container(
@@ -275,13 +269,11 @@ class _VideoCallAvatarPlaceholderState
                       size: 16,
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      widget.statusText,
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    CustomText(
+                      text: widget.statusText,
+                      textColor: Colors.white70,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
                     ),
                   ],
                 ),

@@ -1,0 +1,25 @@
+{
+  "name": "flash_chat_app",
+  "version": "1.0.0",
+  "description": "<p align=\"center\">\r   <img src=\"assets/Flash Chat.jpg\" width=\"100%\" />\r </p>",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/20Mahmoud06/Flash-Chat.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/20Mahmoud06/Flash-Chat/issues"
+  },
+  "homepage": "https://github.com/20Mahmoud06/Flash-Chat#readme"
+}

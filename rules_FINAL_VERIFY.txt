@@ -1,0 +1,214 @@
+﻿[36m[1mi  emulators:[22m[39m Starting emulators: firestore
+[36m[1mi  firestore:[22m[39m Firestore Emulator logging to [1mfirestore-debug.log[22m
+[32m[1m+  firestore:[22m[39m Firestore Emulator UI websocket is running on 9150.
+[36m[1mi [22m[39m Running script: [1mnode C:\Users\ActiveGroup\AppData\Local\Temp\opencode\rules_test\test_rules.js D:\Mahmoud\my_projects\flash_chat_app\firestore.rules[22m
+
+=== USERS ===
+PASS  A reads own users/A
+PASS  A reads other user users/B (contacts/FCM match) [documented residual]
+PASS  B lists users collection
+PASS  A updates own users/A
+PASS  new signup D creates own users/D
+node.exe : [2026-09-14T22:38:48.195Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 
+0x558ca9be error. Code: 7 Message: 7 PERMISSION_DENIED: 
+At C:\Users\ActiveGroup\AppData\Roaming\npm\firebase.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/firebase-tools/lib/bin/fireb ...
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([2026-09-14T22:...ISSION_DENIED: :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+false for 'update' @ L86
+PASS  C updates other user B profile
+[2026-09-14T22:38:48.213Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9bf 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L87
+PASS  C deletes other user B profile
+PASS  C creates users/B (forge another user doc)
+[2026-09-14T22:38:48.243Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c0 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L85, false for 'update' @ L86
+PASS  anon reads users/A
+
+=== CHATS (participant-only) ===
+PASS  A gets chats/chatAB
+PASS  A creates new chat A-C
+PASS  C gets chats/chatAB (non-participant)
+PASS  C lists chats(participant) — no chatAB leak
+[2026-09-14T22:38:48.412Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c3 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L106, evaluation error at L110:24 for 'update' @ L110, false for 'create' @ L106
+PASS  C cannot create chats with others only
+PASS  A updates chatAB lastMessage
+[2026-09-14T22:38:48.432Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9bc 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L110:24 for 'update' @ L110, false for 'update' @ L110
+PASS  participant cannot rewrite uids (freeze participants)
+[2026-09-14T22:38:48.442Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c4 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L111:24 for 'delete' @ L111, false for 'delete' @ L111
+PASS  C deletes chatAB
+
+=== CHAT MESSAGES ===
+PASS  A reads chatAB messages
+PASS  B reads chatAB messages (recipient)
+PASS  A creates a message (participant sender)
+PASS  A edits own message
+PASS  A soft-deletes own message
+PASS  B marks message seen (status)
+PASS  A adds own reaction
+PASS  A removes own reaction
+[2026-09-14T22:38:48.618Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c6 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L143:24 for 'update' @ L143, false for 'update' @ L143
+PASS  B cannot forge A reaction
+PASS  A stars for self
+[2026-09-14T22:38:48.649Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c7 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L143:24 for 'update' @ L143, false for 'update' @ L143
+PASS  B un-stars A (forges vanity) invalid
+PASS  B deleteForMe self
+[2026-09-14T22:38:48.696Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c5 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L143:24 for 'update' @ L143, false for 'update' @ L143
+PASS  A cannot hide message for B (deleteForMe spoof)
+[2026-09-14T22:38:48.708Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c8 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L143:24 for 'update' @ L143, false for 'update' @ L143
+PASS  B cannot edit A message text
+PASS  B deletes any message (conversation cleanup)
+PASS  C reads chatAB messages (not participant)
+[2026-09-14T22:38:48.778Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9ca 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L135:24 for 'create' @ L135, evaluation error at L143:24 for 'update' @ L143, false for 'create' @ 
+L135
+PASS  C creates message in chatAB
+PASS  C lists chatAB messages — empty/no docs
+
+=== TYPING ===
+PASS  A writes own typing doc
+PASS  B reads typing in chatAB
+PASS  C reads typing in chatAB
+[2026-09-14T22:38:48.881Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9cc 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L159, false for 'update' @ L159
+PASS  C writes typing as A (impersonate)
+
+=== GROUPS ===
+PASS  member B reads group g1
+PASS  A creates a group
+PASS  admin A adds member D
+[2026-09-14T22:38:48.936Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9c9 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L199:24 for 'update' @ L199, false for 'update' @ L199
+PASS  non-admin B adds member D (denied)
+[2026-09-14T22:38:48.955Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9cd 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L199:24 for 'update' @ L199, false for 'update' @ L199
+PASS  non-admin B renames group (denied)
+PASS  admin A renames group (allowed)
+PASS  admin A deletes group (soft)
+PASS  member B leaves (self-removal)
+[2026-09-14T22:38:49.034Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9ce 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L199:24 for 'update' @ L199, false for 'update' @ L199
+PASS  non-admin B removes member A (denied)
+PASS  non-member C reads group g1
+PASS  non-member C reads group message
+PASS  member A reads group messages
+PASS  A sends group message
+[2026-09-14T22:38:49.116Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9cf 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L213:24 for 'create' @ L213, evaluation error at L216:24 for 'update' @ L216, false for 'create' @ 
+L213
+PASS  C sends message to group (denied)
+[2026-09-14T22:38:49.145Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d0 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L216:24 for 'update' @ L216, false for 'update' @ L216
+PASS  B cannot edit A group message
+
+=== GROUPS (former member read window) ===
+PASS  former B reads OLD group message (<= leave time)
+PASS  former B reads NEW group message (> leave time) denied
+[2026-09-14T22:38:49.214Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d1 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L213:24 for 'create' @ L213, evaluation error at L216:24 for 'update' @ L216, false for 'create' @ 
+L213
+PASS  former B cannot write to group
+
+=== CALLS ===
+PASS  A creates 1:1 call (caller)
+PASS  B reads ringing call (receiver)
+PASS  B accepts (status + participants)
+PASS  C reads call (not involved)
+[2026-09-14T22:38:49.319Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d3 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L261
+PASS  C cannot impersonate caller in create
+[2026-09-14T22:38:49.343Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d2 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L268:24 for 'update' @ L268, false for 'update' @ L268
+PASS  B cannot re-target call (change receiver)
+[2026-09-14T22:38:49.362Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9cb 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L268:24 for 'update' @ L268, false for 'update' @ L268
+PASS  A cannot change channel (identity frozen)
+PASS  C sees no calls they are not part of
+
+=== PRESENCE ===
+PASS  A writes own presence
+PASS  B reads A presence
+[2026-09-14T22:38:49.445Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d5 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L276, false for 'update' @ L276
+PASS  C writes A presence (impersonate)
+[2026-09-14T22:38:49.467Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d6 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L276
+PASS  C deletes A presence
+
+=== OTP (owner-bound) ===
+PASS  A creates OTP session
+PASS  A reads own OTP
+PASS  A updates own OTP (wrong attempt)
+PASS  A deletes own OTP
+PASS  B reads A OTP (signup hijack blocked)
+[2026-09-14T22:38:49.590Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d7 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L302:24 for 'update' @ L302, Null value error. for 'update' @ L302
+PASS  B updates A OTP
+[2026-09-14T22:38:49.605Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d8 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L305:24 for 'delete' @ L305, Null value error. for 'delete' @ L305
+PASS  B deletes A OTP
+[2026-09-14T22:38:49.613Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d4 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L299, false for 'update' @ L302
+PASS  A creates OTP with forged owner
+PASS  anon reads OTP
+
+=== PHONE REGISTRY ===
+PASS  B reads own claim
+PASS  A reads B claim (is-phone-taken check)
+PASS  A claims a new number
+[2026-09-14T22:38:49.673Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9d9 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L287, evaluation error at L288:32 for 'update' @ L288, false for 'update' @ L288
+PASS  A cannot steal B claim (overwrite)
+[2026-09-14T22:38:49.685Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x558ca9da 
+error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L288:32 for 'delete' @ L288, false for 'delete' @ L288
+PASS  C deletes B claim
+PASS  C cannot list phone registry
+
+=== FAVORITES (collectionGroup messages) ===
+PASS  A favorites via collectionGroup (participant, starredBy A)
+PASS  C collectionGroup scan leaks nothing
+
+====================================
+RESULT: 86 passed, 0 failed
+[32m[1m+ [22m[39m Script exited successfully (code 0)
+[36m[1mi  emulators:[22m[39m Shutting down emulators.
+[36m[1mi  firestore:[22m[39m Stopping Firestore Emulator
+[33m[1m! [22m[39m Firestore Emulator has exited upon receiving signal: SIGINT
+[36m[1mi  hub:[22m[39m Stopping emulator hub
+[36m[1mi  logging:[22m[39m Stopping Logging Emulator

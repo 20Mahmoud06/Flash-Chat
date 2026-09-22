@@ -4,14 +4,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:quickalert/quickalert.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
-
 import '../../../core/routes/route_names.dart';
 import '../../../core/utils/page_transition.dart';
 import '../../../core/utils/validators.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text.dart';
 import '../../../shared/widgets/custom_text_form_field.dart';
-import '../../chat/screens/home_screen.dart';
+import '../../home/screens/home_screen.dart';
 import '../cubit/auth_cubit.dart';
 import '../cubit/auth_state.dart';
 import '../widgets/google_signin_button.dart';
@@ -28,7 +27,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController =
-  TextEditingController();
+      TextEditingController();
 
   bool _isGoogleLoading = false;
 
@@ -60,9 +59,9 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     context.read<AuthCubit>().signUpWithEmail(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
-    );
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
   }
 
   void _signInWithGoogle() {
@@ -80,6 +79,10 @@ class _SignupScreenState extends State<SignupScreen> {
     final colors = FcAppColors.of(context);
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) async {
+        // Only react while this screen is the current route: sign-up may be
+        // pushed on top of Login, which must not also show its own error
+        // dialog or navigate for states emitted by this screen.
+        if (ModalRoute.of(context)?.isCurrent != true) return;
         if (state is AuthLoggedIn) {
           // state.user already carries the profile from the same Firestore
           // doc (fetched inside AuthService), so no fragile second read:
@@ -89,7 +92,8 @@ class _SignupScreenState extends State<SignupScreen> {
             Navigator.pushReplacement(
                 context,
                 PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
+                  pageBuilder: (context, animation, secondaryAnimation) =>
+                      const HomeScreen(),
                   transitionsBuilder: PageTransition.slideFromRight,
                 ));
           } else {
@@ -98,11 +102,24 @@ class _SignupScreenState extends State<SignupScreen> {
             Navigator.pushReplacement(
               context,
               PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => CompleteProfileScreen(user: state.user),
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    CompleteProfileScreen(user: state.user),
                 transitionsBuilder: PageTransition.slideFromRight,
               ),
             );
           }
+        } else if (state is AuthNeedsProfile) {
+          // Signed in but the profile was never completed (closed the app
+          // on the OTP verify or complete profile screen): resume the
+          // sign-up on the complete-profile screen.
+          Navigator.pushReplacement(
+            context,
+            PageRouteBuilder(
+              pageBuilder: (context, animation, secondaryAnimation) =>
+                  const CompleteProfileScreen(),
+              transitionsBuilder: PageTransition.slideFromRight,
+            ),
+          );
         } else if (state is AuthError) {
           if (_isGoogleLoading) {
             setState(() => _isGoogleLoading = false);
@@ -196,18 +213,18 @@ class _SignupScreenState extends State<SignupScreen> {
                                   buttonColor: Colors.lightBlueAccent,
                                   child: isEmailLoading
                                       ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
+                                          height: 24,
+                                          width: 24,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
                                       : CustomText(
-                                    text: 'Sign Up',
-                                    textColor: Colors.white,
-                                    fontSize: 18.sp,
-                                  ),
+                                          text: 'Sign Up',
+                                          textColor: Colors.white,
+                                          fontSize: 18.sp,
+                                        ),
                                 );
                               },
                             ),
@@ -215,19 +232,15 @@ class _SignupScreenState extends State<SignupScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Expanded(
-                                    child:
-                                    Divider(color: colors.divider)),
+                                Expanded(child: Divider(color: colors.divider)),
                                 Padding(
                                     padding:
-                                    EdgeInsets.symmetric(horizontal: 8.0.w),
+                                        EdgeInsets.symmetric(horizontal: 8.0.w),
                                     child: CustomText(
                                         text: 'OR',
                                         textColor: colors.textWeak,
                                         fontSize: 16.sp)),
-                                Expanded(
-                                    child:
-                                    Divider(color: colors.divider)),
+                                Expanded(child: Divider(color: colors.divider)),
                               ],
                             ),
                             SizedBox(height: 12.0.h),
@@ -235,7 +248,7 @@ class _SignupScreenState extends State<SignupScreen> {
                               text: 'Sign up with Google',
                               isLoading: _isGoogleLoading,
                               onPressed:
-                              _isGoogleLoading ? null : _signInWithGoogle,
+                                  _isGoogleLoading ? null : _signInWithGoogle,
                             ),
                             const Spacer(),
                             Row(

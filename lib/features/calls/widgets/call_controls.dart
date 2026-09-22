@@ -1,5 +1,6 @@
 ﻿import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../../core/constants/app_colors.dart';
 
 class CallControls extends StatelessWidget {
   final bool isMuted;
@@ -29,7 +30,7 @@ class CallControls extends StatelessWidget {
     String? tooltip,
   }) {
     final backgroundColor = isDestructive
-        ? const Color(0xFFFF3B30)
+        ? AppColors.callEndRed
         : (isActive
             ? Colors.redAccent.withValues(alpha: 0.9)
             : Colors.white.withValues(alpha: 0.15));
@@ -60,7 +61,7 @@ class CallControls extends StatelessWidget {
               boxShadow: isDestructive
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFFF3B30).withValues(alpha: 0.4),
+                        color: AppColors.callEndRed.withValues(alpha: 0.4),
                         blurRadius: 16,
                         spreadRadius: 2,
                       )
@@ -98,7 +99,7 @@ class CallControls extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-              color: const Color(0xFF1E1E2E).withValues(alpha: 0.75),
+              color: AppColors.callOverlay.withValues(alpha: 0.75),
               borderRadius: BorderRadius.circular(40),
               border: Border.all(
                 color: Colors.white.withValues(alpha: 0.15),
@@ -134,7 +135,8 @@ class CallControls extends StatelessWidget {
                           : Icons.videocam_rounded,
                       onPressed: onCameraToggle,
                       isActive: isCameraOff,
-                      tooltip: isCameraOff ? 'Turn Camera On' : 'Turn Camera Off',
+                      tooltip:
+                          isCameraOff ? 'Turn Camera On' : 'Turn Camera Off',
                     ),
                   ],
 

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flash_chat_app/features/connectivity/cubit/connectivity_cubit.dart';
 import 'package:flash_chat_app/features/connectivity/cubit/connectivity_state.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -70,18 +71,16 @@ class _ConnectionStatusBannerState extends State<ConnectionStatusBanner> {
                 padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 6.h),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, animation) =>
-                      FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position:
-                              Tween<Offset>(
-                                begin: const Offset(0, -0.4),
-                                end: Offset.zero,
-                              ).animate(animation),
-                          child: child,
-                        ),
-                      ),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, -0.4),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
                   child: isOffline
                       ? _buildPill(
                           key: const ValueKey('offline'),
@@ -100,15 +99,14 @@ class _ConnectionStatusBannerState extends State<ConnectionStatusBanner> {
                               ),
                               SizedBox(width: 8.w),
                               Flexible(
-                                child: Text(
-                                  'Connection lost — trying to reconnect...',
+                                child: CustomText(
+                                  text:
+                                      'Connection lost — trying to reconnect...',
+                                  textColor: Colors.red.shade800,
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w600,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.red.shade800,
-                                    fontSize: 12.sp,
-                                    fontWeight: FontWeight.w600,
-                                  ),
                                 ),
                               ),
                             ],
@@ -128,15 +126,13 @@ class _ConnectionStatusBannerState extends State<ConnectionStatusBanner> {
                               ),
                               SizedBox(width: 8.w),
                               Flexible(
-                                child: Text(
-                                  'You\'re back online',
+                                child: CustomText(
+                                  text: 'You\'re back online',
+                                  textColor: Colors.green.shade800,
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.green.shade800,
-                                    fontSize: 13.sp,
-                                    fontWeight: FontWeight.w600,
-                                  ),
                                 ),
                               ),
                             ],

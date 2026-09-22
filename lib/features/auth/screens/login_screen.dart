@@ -1,5 +1,6 @@
 import 'package:flash_chat_app/features/auth/cubit/auth_state.dart';
-import 'package:flash_chat_app/features/chat/screens/home_screen.dart';
+import 'package:flash_chat_app/features/home/screens/home_screen.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
 import 'package:flash_chat_app/features/profile/screens/complete_profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -28,6 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isGoogleLoading = false;
+  bool _navigated = false;
 
   @override
   void dispose() {
@@ -40,9 +42,9 @@ class _LoginScreenState extends State<LoginScreen> {
     FocusScope.of(context).unfocus();
     if (_formKey.currentState!.validate()) {
       context.read<AuthCubit>().loginWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
+            _emailController.text.trim(),
+            _passwordController.text.trim(),
+          );
     }
   }
 
@@ -56,31 +58,78 @@ class _LoginScreenState extends State<LoginScreen> {
     });
   }
 
+  void _goHome() {
+    if (_navigated) return;
+    _navigated = true;
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const HomeScreen(),
+        transitionsBuilder: PageTransition.slideFromRight,
+      ),
+    );
+  }
+
+  /// Decides where a freshly-signed-in user lands. A completed profile (any
+  /// non-empty name) goes Home immediately; an EMPTY name is NOT trusted on
+  /// its own — the sign-in snapshot can race the profile write or read a
+  /// stale cache shell, which used to bounce existing users into "Complete
+  /// Profile" until they killed and reopened the app. So the profile is
+  /// re-resolved against the server (same rule the cold-start/splash uses:
+  /// an existing profile WITH a name OR a previously-known profile ⇒ Home;
+  /// a missing or name-less shell document ⇒ Complete Profile).
+  Future<void> _handleLoggedIn(UserModel user) async {
+    if (user.firstName.isNotEmpty) {
+      _goHome();
+      return;
+    }
+    final resolved = await context.read<AuthCubit>().resolvePostSignIn(user.uid);
+    if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
+    if (resolved != null) {
+      _goHome();
+    } else {
+      // No completed profile and nothing known about it server-side: offer
+      // the full sign-up resume (names, phone, OTP).
+      if (!_navigated) {
+        _navigated = true;
+        Navigator.pushReplacement(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (context, animation, secondaryAnimation) =>
+                CompleteProfileScreen(user: user),
+            transitionsBuilder: PageTransition.slideFromRight,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = FcAppColors.of(context);
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) async {
+        // Only react while this screen is the current route. Login stays
+        // mounted below Sign Up / Reset Password (pushed with pushNamed),
+        // and its listener would otherwise also fire for errors and
+        // success states meant for those screens - e.g. a "Login Failed"
+        // dialog stacked behind a "Sign Up Failed" dialog, or a duplicate
+        // navigation when the sign-up succeeds.
+        if (ModalRoute.of(context)?.isCurrent != true) return;
         if (state is AuthLoggedIn) {
-          // state.user already carries the profile from the same Firestore
-          // doc (fetched inside AuthService), so no fragile second read:
-          // a completed profile goes home, anything else resumes on the
-          // complete-profile screen. Never throws, even fully offline.
-          if (state.user.firstName.isNotEmpty) {
-            Navigator.pushReplacement(
-                context,
-                PageRouteBuilder(
-                  pageBuilder: (context, animation, secondaryAnimation) => const HomeScreen(),
-                  transitionsBuilder: PageTransition.slideFromRight,
-                ));
-          } else {
-            // No completed profile: offer the full sign-up resume (names,
-            // phone, OTP) instead of silently landing on the home screen
-            // with an incomplete account.
+          await _handleLoggedIn(state.user);
+        } else if (state is AuthNeedsProfile) {
+          // Signed in but the profile was never completed (closed the app
+          // on the OTP verify or complete profile screen): resume the
+          // sign-up on the complete-profile screen.
+          if (!_navigated) {
+            _navigated = true;
             Navigator.pushReplacement(
               context,
               PageRouteBuilder(
-                pageBuilder: (context, animation, secondaryAnimation) => CompleteProfileScreen(user: state.user),
+                pageBuilder: (context, animation, secondaryAnimation) =>
+                    const CompleteProfileScreen(),
                 transitionsBuilder: PageTransition.slideFromRight,
               ),
             );
@@ -115,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   return SingleChildScrollView(
                     child: ConstrainedBox(
                       constraints:
-                      BoxConstraints(minHeight: constraints.maxHeight),
+                          BoxConstraints(minHeight: constraints.maxHeight),
                       child: IntrinsicHeight(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -178,18 +227,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                   buttonColor: Colors.lightBlueAccent,
                                   child: isEmailLoading
                                       ? const SizedBox(
-                                    height: 24,
-                                    width: 24,
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
+                                          height: 24,
+                                          width: 24,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                        )
                                       : CustomText(
-                                    text: 'Log In',
-                                    textColor: Colors.white,
-                                    fontSize: 18.sp,
-                                  ),
+                                          text: 'Log In',
+                                          textColor: Colors.white,
+                                          fontSize: 18.sp,
+                                        ),
                                 );
                               },
                             ),
@@ -197,20 +246,16 @@ class _LoginScreenState extends State<LoginScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Expanded(
-                                    child:
-                                    Divider(color: colors.divider)),
+                                Expanded(child: Divider(color: colors.divider)),
                                 Padding(
                                   padding:
-                                  EdgeInsets.symmetric(horizontal: 8.0.w),
+                                      EdgeInsets.symmetric(horizontal: 8.0.w),
                                   child: CustomText(
                                       text: 'OR',
                                       textColor: colors.textWeak,
                                       fontSize: 16.sp),
                                 ),
-                                Expanded(
-                                    child:
-                                    Divider(color: colors.divider)),
+                                Expanded(child: Divider(color: colors.divider)),
                               ],
                             ),
                             SizedBox(height: 12.0.h),
@@ -218,7 +263,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               text: 'Login with Google',
                               isLoading: _isGoogleLoading,
                               onPressed:
-                              _isGoogleLoading ? null : _loginWithGoogle,
+                                  _isGoogleLoading ? null : _loginWithGoogle,
                             ),
                             const Spacer(),
                             Row(

@@ -1,4 +1,4 @@
-import 'package:flash_chat_app/services/auth/auth.dart';
+import 'package:flash_chat_app/features/auth/services/auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -7,12 +7,12 @@ import 'core/routes/app_router.dart';
 import 'core/routes/navigation_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/cubit/auth_cubit.dart';
-import 'features/calls/cubit/call_cubit.dart';
+import 'features/calls/bloc/call_bloc.dart';
 import 'features/connectivity/cubit/connectivity_cubit.dart';
 import 'features/profile/cubit/profile_cubit.dart';
 import 'features/settings/cubit/theme_cubit.dart';
-import 'screens/splash_screen.dart';
-import 'shared/widgets/call_in_progress_pill.dart';
+import 'features/onboarding/screens/splash_screen.dart';
+import 'features/calls/widgets/call_in_progress_pill.dart';
 import 'shared/widgets/connection_status_banner.dart';
 
 class MyApp extends StatelessWidget {
@@ -39,11 +39,11 @@ class MyApp extends StatelessWidget {
             BlocProvider<ThemeCubit>(
               create: (_) => ThemeCubit(),
             ),
-            // App-wide call cubit: the Agora engine must survive the call
+            // App-wide call bloc: the Agora engine must survive the call
             // page being popped (minimized voice calls / video PiP).
-            BlocProvider<CallCubit>(
+            BlocProvider<CallBloc>(
               lazy: true,
-              create: (_) => CallCubit.instance,
+              create: (_) => CallBloc.instance,
             ),
           ],
           child: AppCallListener(
@@ -58,6 +58,7 @@ class MyApp extends StatelessWidget {
                   themeMode: themeState.mode,
                   builder: _buildWithOfflineDetection,
                   onGenerateRoute: AppRouter.generateRoute,
+                  navigatorObservers: [CallRouteObserver.instance],
                   home: const SplashScreen(),
                 );
               },

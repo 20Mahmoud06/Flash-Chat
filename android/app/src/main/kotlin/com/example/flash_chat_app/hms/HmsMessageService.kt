@@ -10,7 +10,9 @@ import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.example.flash_chat_app.CallGuardStore
 import com.example.flash_chat_app.MainActivity
+import com.example.flash_chat_app.MissedNotifPrefs
 import com.example.flash_chat_app.NotificationChannels
 import com.example.flash_chat_app.R
 import com.google.firebase.auth.FirebaseAuth
@@ -75,10 +77,27 @@ class HmsMessageService : HmsMessageService() {
 
     private fun showCall(payload: Map<String, String>) {
         val callId = payload["callId"] ?: return
-        val callerName = payload["callerName"] ?: "Unknown"
         val isVideo = payload["isVideo"] == "true"
         val isGroup = payload["isGroup"] == "true"
-        val callerId = payload["callerId"]
+
+        // Never re-ring an already-handled 1-to-1 call (a ring was shown
+        // before, it timed out to no_answer, or Dart marked it through the
+        // call-guard bridge). Post the single missed-call notification and
+        // leave it at the same per-call notification id so it never stacks.
+        if (!isGroup && CallGuardStore.isHandled(applicationContext, callId)) {
+            val callerName = payload["callerName"] ?: "Unknown"
+            NotificationChannels.postMissedCallNotification(
+                applicationContext, callId, callerName, isVideo
+            )
+            Log.d(TAG, "Suppressed re-ring for handled call: $callId")
+            return
+        }
+
+        val callerName = if (isGroup) {
+            payload["groupName"] ?: "Unknown"
+        } else {
+            payload["callerName"] ?: "Unknown"
+        }
 
         val data = Bundle()
         data.putString(CallkitConstants.EXTRA_CALLKIT_ID, callId)
@@ -91,21 +110,16 @@ class HmsMessageService : HmsMessageService() {
         data.putString(CallkitConstants.EXTRA_CALLKIT_TEXT_DECLINE, "Decline")
         data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_NOTIFICATION, true)
         data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_SHOW_FULL_LOCKED_SCREEN, true)
-        // The app's own incoming-call ringtone (res/raw/ringtone.wav). The
-        // CallKit sound manager resolves this raw resource and loops it on the
-        // RING stream, stopping it on accept/decline/timeout/end.
         data.putString(CallkitConstants.EXTRA_CALLKIT_RINGTONE_PATH, "ringtone")
         data.putString(CallkitConstants.EXTRA_CALLKIT_BACKGROUND_COLOR, "#000000")
         data.putString(CallkitConstants.EXTRA_CALLKIT_ACTION_COLOR, "#4CAF50")
+        data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_NATIVE_PUSH, true)
 
-        // The accept/decline events surface this map back to Dart via the
-        // plugin's event channel (CallArguments.fromMap), so it must mirror
-        // the extra map the Dart-side showIncomingCall() builds.
         val extra = HashMap<String, Any?>()
         extra["callId"] = callId
         extra["isVideo"] = isVideo.toString()
-        extra["callerId"] = callerId
-        extra["callerName"] = callerName
+        extra["callerId"] = payload["callerId"]
+        extra["callerName"] = payload["callerName"]
         extra["callerAvatar"] = payload["callerAvatar"]
         extra["isGroup"] = payload["isGroup"] ?: "false"
         if (payload.containsKey("groupId")) extra["groupId"] = payload["groupId"]
@@ -116,67 +130,21 @@ class HmsMessageService : HmsMessageService() {
         if (payload.containsKey("receiverAvatar")) extra["receiverAvatar"] = payload["receiverAvatar"]
         data.putSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA, extra)
 
-        // Resolve the receiver's nickname for the caller (shown instead of the
-        // real name in the ring) on a worker thread, then launch the ring once
-        // the display name is final.
-        resolveAndLaunchRing(data, isGroup, callerId, callerName, payload["groupName"])
-
-        // Native no-answer safety net (mirrors the GMS path): if the call is
-        // still ringing after the ring window, mark it no_answer.
-        scheduleTimeoutAsync(callId)
-    }
-
-    private fun resolveAndLaunchRing(
-        data: Bundle,
-        isGroup: Boolean,
-        callerId: String?,
-        callerName: String?,
-        groupName: String?
-    ) {
-        Thread {
-            try {
-                val baseName = if (isGroup) groupName else callerName
-                val displayName = if (!isGroup && callerId != null) {
-                    resolveNickname(callerId) ?: (baseName ?: "Unknown")
-                } else {
-                    baseName ?: "Unknown"
-                }
-                data.putString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, displayName)
-                launchRing(data)
-            } catch (t: Throwable) {
-                Log.w(TAG, "Failed to resolve name; launching with payload name: ${t.message}")
-                launchRing(data)
-            }
-        }.start()
-    }
-
-    private fun launchRing(data: Bundle) {
-        val callId = data.getString(CallkitConstants.EXTRA_CALLKIT_ID) ?: return
-        // Marker: the ring screen plays the ringtone/vibration itself ONLY when
-        // a native push launched it (the plugin path in the foreground already
-        // plays it through CallkitNotificationManager — never double-ring).
-        data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_NATIVE_PUSH, true)
         NotificationChannels.postFullScreenCallRing(applicationContext, data, callId)
+
+        // Persist the guard immediately so a re-delivered push for this same
+        // call can never ring again.
+        if (!isGroup) CallGuardStore.markHandled(applicationContext, callId)
+
+        scheduleTimeoutAsync(callId, callerName, isVideo, isGroup)
     }
 
-    private fun resolveNickname(callerId: String): String? {
-        return try {
-            val me = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
-                ?: return null
-            val doc = com.google.android.gms.tasks.Tasks.await(
-                com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(me)
-                    .get()
-            )
-            (doc.data?.get("nicknames") as? Map<*, *>)?.get(callerId)?.toString()
-        } catch (t: Throwable) {
-            Log.w(TAG, "Nickname lookup failed (using payload name): ${t.message}")
-            null
-        }
-    }
-
-    private fun scheduleTimeoutAsync(callId: String) {
+    private fun scheduleTimeoutAsync(
+        callId: String,
+        callerName: String,
+        isVideo: Boolean,
+        isGroup: Boolean
+    ) {
         Thread {
             Thread.sleep(RING_TIMEOUT_MS)
             try {
@@ -194,6 +162,14 @@ class HmsMessageService : HmsMessageService() {
                             .document(callId)
                             .update("status", "no_answer")
                     )
+                    if (!isGroup) {
+                        // Single missed-call notification + guard: a re-delivered
+                        // push must never ring this call again.
+                        CallGuardStore.markHandled(applicationContext, callId)
+                        NotificationChannels.postMissedCallNotification(
+                            applicationContext, callId, callerName, isVideo
+                        )
+                    }
                     Log.d(TAG, "Ring timed out natively: $callId")
                 }
             } catch (t: Throwable) {
@@ -305,6 +281,10 @@ class HmsMessageService : HmsMessageService() {
         try {
             notificationManager.notify(id, builder.build())
             Log.d(TAG, "Notification shown for $peerId (id=$id)")
+            // Advance the Dart-side delivered watermark so the next app-open
+            // backfill never re-notifies this conversation — even after the
+            // user swipes this notification away.
+            MissedNotifPrefs.markChatDelivered(applicationContext, peerId, isGroup)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show notification: ${e.message}")
         }

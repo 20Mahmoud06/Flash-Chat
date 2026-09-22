@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -96,7 +97,8 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer>
   }
 
   Future<void> _seekToFraction(double fraction) async {
-    final target = Duration(milliseconds: (_duration.inMilliseconds * fraction).toInt());
+    final target =
+        Duration(milliseconds: (_duration.inMilliseconds * fraction).toInt());
     await _player.seek(target);
     setState(() {
       _position = target;
@@ -152,7 +154,8 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer>
               Builder(
                 builder: (waveContext) => GestureDetector(
                   onTapDown: (details) {
-                    final size = (waveContext.findRenderObject() as RenderBox?)?.size;
+                    final size =
+                        (waveContext.findRenderObject() as RenderBox?)?.size;
                     if (size == null || size.width <= 0) return;
                     _seekToFraction(details.localPosition.dx / size.width);
                   },
@@ -177,17 +180,15 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer>
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  Text(
-                    // Total length before playback starts, elapsed while
-                    // playing / paused (WhatsApp style).
-                    _format(_isPlaying || _position > Duration.zero
-                        ? _position
-                        : _duration),
-                    style: TextStyle(
-                      color: widget.textColor.withValues(alpha: 0.75),
-                      fontSize: 11.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  CustomText(
+                    text: // Total length before playback starts, elapsed while
+                        // playing / paused (WhatsApp style).
+                        _format(_isPlaying || _position > Duration.zero
+                            ? _position
+                            : _duration),
+                    textColor: widget.textColor.withValues(alpha: 0.75),
+                    fontSize: 11.sp,
+                    fontWeight: FontWeight.w600,
                   ),
                   const SizedBox(width: 8),
                   // Speed selector
@@ -205,17 +206,15 @@ class _VoiceMessagePlayerState extends State<VoiceMessagePlayer>
                           color: widget.playedColor.withValues(alpha: 0.4),
                         ),
                       ),
-                      child: Text(
-                        _speeds[_speedIndex] == 1.0
+                      child: CustomText(
+                        text: _speeds[_speedIndex] == 1.0
                             ? '1x'
                             : _speeds[_speedIndex] == 2.0
                                 ? '2x'
                                 : '${_speeds[_speedIndex]}x',
-                        style: TextStyle(
-                          color: widget.playedColor,
-                          fontSize: 11.sp,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        textColor: widget.playedColor,
+                        fontSize: 11.sp,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),

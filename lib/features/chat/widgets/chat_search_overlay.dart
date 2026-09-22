@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
-import 'package:flash_chat_app/models/message_model.dart';
-import 'package:flash_chat_app/models/user_model.dart';
+import 'package:flash_chat_app/features/chat/models/message_model.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -83,8 +84,8 @@ class _ChatSearchOverlayState extends State<ChatSearchOverlay> {
 
   void _jumpToIndex(int index, List<MessageModel> matches) {
     if (matches.isEmpty) return;
-    setState(() =>
-        _selectedIndex = (index % matches.length + matches.length) % matches.length);
+    setState(() => _selectedIndex =
+        (index % matches.length + matches.length) % matches.length);
     widget.onJumpTo(matches[_selectedIndex].id);
   }
 
@@ -141,13 +142,11 @@ class _ChatSearchOverlayState extends State<ChatSearchOverlay> {
                       ),
                     ),
                     if (matches.isNotEmpty) ...[
-                      Text(
-                        '${_selectedIndex + 1} / ${matches.length}',
-                        style: TextStyle(
-                          color: colors.textSecondary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      CustomText(
+                        text: '${_selectedIndex + 1} / ${matches.length}',
+                        textColor: colors.textSecondary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                       IconButton(
                         icon: const Icon(Icons.keyboard_arrow_up_rounded),
@@ -179,9 +178,7 @@ class _ChatSearchOverlayState extends State<ChatSearchOverlay> {
                 const LinearProgressIndicator(minHeight: 2)
               else if (matches.isNotEmpty)
                 _buildResults(colors, matches),
-              if (!_loadingAll &&
-                  _query.trim().isNotEmpty &&
-                  matches.isEmpty)
+              if (!_loadingAll && _query.trim().isNotEmpty && matches.isEmpty)
                 Padding(
                   padding: const EdgeInsets.all(14),
                   child: Row(
@@ -189,10 +186,10 @@ class _ChatSearchOverlayState extends State<ChatSearchOverlay> {
                       Icon(Icons.search_off_rounded,
                           color: colors.textWeak, size: 18),
                       const SizedBox(width: 8),
-                      Text(
-                        'No messages found',
-                        style: TextStyle(
-                            color: colors.textSecondary, fontSize: 14),
+                      CustomText(
+                        text: 'No messages found',
+                        textColor: colors.textSecondary,
+                        fontSize: 14,
                       ),
                     ],
                   ),
@@ -233,37 +230,37 @@ class _ChatSearchOverlayState extends State<ChatSearchOverlay> {
             leading: CircleAvatar(
               radius: 18,
               backgroundColor: colors.avatarBackground,
-              child: Text(avatar, style: const TextStyle(fontSize: 16)),
+              child: CustomText(text: avatar, fontSize: 16),
             ),
-            title: Text(
-              senderName,
+            title: CustomText(
+              text: senderName,
+              textColor: colors.textPrimary,
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-              ),
             ),
-            subtitle: Text(
-              message.text,
+            subtitle: CustomText(
+              text: message.text,
+              textColor: colors.textSecondary,
+              fontSize: 13,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colors.textSecondary, fontSize: 13),
             ),
             trailing: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(
-                  _dayOf(message.timestamp),
-                  style:
-                      TextStyle(color: colors.textWeak, fontSize: 11),
+                CustomText(
+                  text: _dayOf(message.timestamp),
+                  textColor: colors.textWeak,
+                  fontSize: 11,
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  _timeOf(message.timestamp),
-                  style: TextStyle(color: colors.textWeak, fontSize: 12),
+                CustomText(
+                  text: _timeOf(message.timestamp),
+                  textColor: colors.textWeak,
+                  fontSize: 12,
                 ),
               ],
             ),

@@ -1,3 +1,5 @@
+import 'package:flash_chat_app/core/constants/app_colors.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 
 class GroupVoiceGridTile extends StatelessWidget {
@@ -29,7 +31,7 @@ class GroupVoiceGridTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF1B263B),
+        color: AppColors.callCardBg,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: isLocal
@@ -62,7 +64,7 @@ class GroupVoiceGridTile extends StatelessWidget {
                     boxShadow: isSpeaking
                         ? const [
                             BoxShadow(
-                              color: Color(0xFF4CAF50),
+                              color: AppColors.speakingGlow,
                               blurRadius: 24,
                               spreadRadius: 3,
                             ),
@@ -84,34 +86,32 @@ class GroupVoiceGridTile extends StatelessWidget {
                         shape: BoxShape.circle,
                         gradient: LinearGradient(
                           colors: isLocal
-                              ? [Colors.lightBlueAccent, const Color(0xFF0288D1)]
+                              ? [Colors.lightBlueAccent, AppColors.primaryDark]
                               : [
-                                  const Color(0xFF24324D),
-                                  const Color(0xFF1B263B),
+                                  AppColors.callTileActive,
+                                  AppColors.callCardBg,
                                 ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         border: Border.all(
                           color: isSpeaking
-                              ? const Color(0xFF66BB6A)
+                              ? AppColors.speakingBorder
                               : Colors.transparent,
                           width: 2,
                         ),
                       ),
                       child: Center(
                         child: avatarEmoji != null && avatarEmoji!.isNotEmpty
-                            ? Text(
-                                avatarEmoji!,
-                                style: const TextStyle(fontSize: 30),
+                            ? CustomText(
+                                text: avatarEmoji!,
+                                fontSize: 30,
                               )
-                            : Text(
-                                _getInitials(name),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 24,
-                                ),
+                            : CustomText(
+                                text: _getInitials(name),
+                                textColor: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 24,
                               ),
                       ),
                     ),
@@ -124,13 +124,11 @@ class GroupVoiceGridTile extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child: Text(
-                          name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
+                        child: CustomText(
+                          text: name,
+                          textColor: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.center,
@@ -138,9 +136,9 @@ class GroupVoiceGridTile extends StatelessWidget {
                       ),
                       if (isSpeaking) ...[
                         const SizedBox(width: 4),
-                        const Text(
-                          '🎙',
-                          style: TextStyle(fontSize: 12),
+                        const CustomText(
+                          text: '🎙',
+                          fontSize: 12,
                         ),
                       ],
                     ],
@@ -157,7 +155,7 @@ class GroupVoiceGridTile extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF5252).withValues(alpha: 0.85),
+                  color: AppColors.callErrorRed.withValues(alpha: 0.85),
                   shape: BoxShape.circle,
                   border: Border.all(
                     color: Colors.white.withValues(alpha: 0.4),

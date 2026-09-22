@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flash_chat_app/models/user_model.dart';
+import 'package:flash_chat_app/core/utils/friendly_error_messages.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
 import 'package:flash_chat_app/services/block/block_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -40,7 +41,8 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       debugPrint('Failed to load blocked users: $e');
       if (mounted) {
         setState(() {
-          _errorMessage = 'Could not load blocked users: $e';
+          _errorMessage = friendlyErrorMessage(
+              e, fallback: 'Could not load blocked users. Please try again.');
           _loading = false;
         });
       }
@@ -52,8 +54,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
       context: context,
       type: QuickAlertType.confirm,
       title: 'Unblock ${user.fullName}?',
-      text:
-          'You will be able to send messages and calls to this user again.',
+      text: 'You will be able to send messages and calls to this user again.',
       confirmBtnText: 'Unblock',
       cancelBtnText: 'Cancel',
       confirmBtnColor: Colors.lightBlueAccent,
@@ -72,8 +73,8 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: CustomText(
-                    text: '${user.fullName} has been unblocked'),
+                content:
+                    CustomText(text: '${user.fullName} has been unblocked'),
                 backgroundColor: Colors.lightBlueAccent,
               ),
             );
@@ -99,7 +100,8 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: CustomText(text: 'You cannot open this chat while blocked.'),
+            content:
+                CustomText(text: 'You cannot open this chat while blocked.'),
             backgroundColor: Colors.red,
           ),
         );
@@ -223,9 +225,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
                   radius: 24.r,
                   backgroundColor: colors.avatarBackground,
                   child: CustomText(
-                    text: user.avatarEmoji.isNotEmpty
-                        ? user.avatarEmoji
-                        : '👤',
+                    text: user.avatarEmoji.isNotEmpty ? user.avatarEmoji : '👤',
                     fontSize: 22.sp,
                   ),
                 ),
@@ -245,12 +245,13 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.lightBlueAccent,
                     elevation: 0,
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 12.w, vertical: 8.h),
+                    padding:
+                        EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10.r)),
                   ),
-                  icon: const Icon(Icons.lock_open, size: 16, color: Colors.white),
+                  icon: const Icon(Icons.lock_open,
+                      size: 16, color: Colors.white),
                   label: CustomText(
                     text: 'Unblock',
                     fontSize: 13.sp,

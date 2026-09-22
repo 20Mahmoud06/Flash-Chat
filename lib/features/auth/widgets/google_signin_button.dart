@@ -39,28 +39,28 @@ class GoogleSigninButton extends StatelessWidget {
         child: Center(
           child: isLoading
               ? SizedBox(
-            height: 25.h,
-            width: 25.w,
-            child: CircularProgressIndicator(
-              strokeWidth: 3.0,
-              color: colors.textWeak,
-            ),
-          )
+                  height: 25.h,
+                  width: 25.w,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.0,
+                    color: colors.textWeak,
+                  ),
+                )
               : Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                'assets/google.png',
-                width: 30.w,
-                height: 30.h,
-              ),
-              SizedBox(width: 10.0.w),
-              CustomText(
-                text: text,
-                fontSize: fontSize,
-              ),
-            ],
-          ),
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/google.png',
+                      width: 30.w,
+                      height: 30.h,
+                    ),
+                    SizedBox(width: 10.0.w),
+                    CustomText(
+                      text: text,
+                      fontSize: fontSize,
+                    ),
+                  ],
+                ),
         ),
       ),
     );

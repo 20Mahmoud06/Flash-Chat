@@ -43,6 +43,7 @@ class CallkitNotificationManager(
         const val NOTIFICATION_CHANNEL_ID_ONGOING = "callkit_ongoing_channel_id"
         const val NOTIFICATION_CHANNEL_ID_MISSED = "callkit_missed_channel_id"
 
+        private const val TAG = "CallkitNotificationManager"
     }
 
     private var dataNotificationPermission: Map<String, Any> = HashMap()
@@ -887,27 +888,30 @@ class CallkitNotificationManager(
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getNotificationManager().apply {
-                var channelCall = getNotificationChannel(NOTIFICATION_CHANNEL_ID_INCOMING)
-                if (channelCall != null) {
-                    channelCall.setSound(null, null)
-                } else {
-                    channelCall = NotificationChannel(
-                        NOTIFICATION_CHANNEL_ID_INCOMING,
-                        incomingCallChannelName,
-                        NotificationManager.IMPORTANCE_HIGH
-                    ).apply {
-                        description = ""
-                        vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
-                        lightColor = Color.RED
-                        enableLights(true)
-                        enableVibration(true)
-                        setSound(null, null)
-                    }
+                // Delete the old channel (created with setSound(null,null)
+                // which MIUI / HyperOS freezes as silent). Recreate below
+                // with the bundled ringtone so the notification is audible.
+                try { deleteNotificationChannel(NOTIFICATION_CHANNEL_ID_INCOMING) } catch (_: Exception) {}
+                val channelCall = NotificationChannel(
+                    NOTIFICATION_CHANNEL_ID_INCOMING,
+                    incomingCallChannelName,
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = ""
+                    vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
+                    lightColor = Color.RED
+                    enableLights(true)
+                    enableVibration(true)
+                    setSound(
+                        Uri.parse("android.resource://${context.packageName}/${context.resources.getIdentifier("ringtone", "raw", context.packageName)}"),
+                        android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .build()
+                    )
                 }
                 channelCall.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-
                 channelCall.importance = NotificationManager.IMPORTANCE_HIGH
-
                 createNotificationChannel(channelCall)
 
                 val channelMissedCall = NotificationChannel(
@@ -993,9 +997,17 @@ class CallkitNotificationManager(
     @SuppressLint("MissingPermission")
     fun showIncomingNotification(data: Bundle) {
         val callkitNotification = getIncomingNotification(data)
-        if (incomingChannelEnabled()) {
-            callkitSoundPlayerManager?.play(data)
-        }
+        // Always play the ringtone via MediaPlayer regardless of notification
+        // channel state. On MIUI / HyperOS, areNotificationsEnabled() can
+        // return false due to the OEM's own notification management layer,
+        // which would skip play() and leave the call silent. The ringtone is
+        // played through CallkitSoundPlayerManager (independent of the
+        // notification system) so it should never be gated on channel state.
+        // Do NOT set EXTRA_CALLKIT_IS_NATIVE_PUSH here and do NOT fire the
+        // full-screen intent: in the foreground this is the in-app call UI
+        // path, and force-launching CallkitIncomingActivity would replace the
+        // live call screen with the full-screen ring (app-IS-closed look).
+        callkitSoundPlayerManager?.play(data)
         callkitNotification?.let {
             getNotificationManager().notify(
                 it.id, callkitNotification.notification

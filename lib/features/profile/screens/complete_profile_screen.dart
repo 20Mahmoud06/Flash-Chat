@@ -1,9 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
 import 'package:flash_chat_app/features/auth/widgets/phone_number_field.dart';
-import 'package:flash_chat_app/models/phone_verification_arguments.dart';
-import 'package:flash_chat_app/services/auth/phone_registry.dart';
-import 'package:flash_chat_app/services/auth/pending_signup_service.dart';
+import 'package:flash_chat_app/features/auth/models/phone_verification_arguments.dart';
+import 'package:flash_chat_app/features/auth/services/phone_registry.dart';
+import 'package:flash_chat_app/features/auth/services/pending_signup_service.dart';
 import 'package:flash_chat_app/services/otp/otp_service.dart';
 import 'package:flash_chat_app/shared/widgets/custom_button.dart';
 import 'package:flash_chat_app/shared/widgets/custom_text.dart';
@@ -12,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:quickalert/quickalert.dart';
 import '../../../core/routes/route_names.dart';
-import '../../../models/user_model.dart';
+import '../models/user_model.dart';
 
 class CompleteProfileScreen extends StatefulWidget {
   final UserModel? user;
@@ -23,7 +23,8 @@ class CompleteProfileScreen extends StatefulWidget {
   State<CompleteProfileScreen> createState() => _CompleteProfileScreenState();
 }
 
-class _CompleteProfileScreenState extends State<CompleteProfileScreen> with SingleTickerProviderStateMixin {
+class _CompleteProfileScreenState extends State<CompleteProfileScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -99,31 +100,31 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
         throw 'This phone number is already registered.';
       }
 
-       final otpId = await _otpService.sendOtp(phone: e164Phone);
-       if (!mounted) return;
+      final otpId = await _otpService.sendOtp(phone: e164Phone);
+      if (!mounted) return;
 
-       // Persist the in-progress sign-up so a fully-killed app can resume
-       // this exact OTP session from the auth screen.
-       await PendingSignupService.instance.save(PendingSignup(
-         firstName: _firstNameController.text.trim(),
-         lastName: _lastNameController.text.trim(),
-         phoneNumber: e164Phone,
-         countryCode: phoneNumberField.selectedCountry.code,
-         otpId: otpId,
-       ));
-       if (!mounted) return;
+      // Persist the in-progress sign-up so a fully-killed app can resume
+      // this exact OTP session from the auth screen.
+      await PendingSignupService.instance.save(PendingSignup(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        phoneNumber: e164Phone,
+        countryCode: phoneNumberField.selectedCountry.code,
+        otpId: otpId,
+      ));
+      if (!mounted) return;
 
-       Navigator.pushNamed(
-         context,
-         RouteNames.phoneVerificationPage,
-         arguments: PhoneVerificationArguments(
-           firstName: _firstNameController.text.trim(),
-           lastName: _lastNameController.text.trim(),
-           phoneNumber: e164Phone,
-           country: phoneNumberField.selectedCountry,
-           otpId: otpId,
-         ),
-       );
+      Navigator.pushNamed(
+        context,
+        RouteNames.phoneVerificationPage,
+        arguments: PhoneVerificationArguments(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          phoneNumber: e164Phone,
+          country: phoneNumberField.selectedCountry,
+          otpId: otpId,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       QuickAlert.show(
@@ -143,7 +144,8 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
     }
   }
 
-  final GlobalKey<PhoneNumberFieldState> _phoneFieldKey = GlobalKey<PhoneNumberFieldState>();
+  final GlobalKey<PhoneNumberFieldState> _phoneFieldKey =
+      GlobalKey<PhoneNumberFieldState>();
 
   @override
   Widget build(BuildContext context) {
@@ -156,7 +158,10 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
           automaticallyImplyLeading: false,
           title: SlideTransition(
             position: _slideAnimation,
-            child: const CustomText(text: 'Complete Your Profile', textColor: Colors.white, fontWeight: FontWeight.bold),
+            child: const CustomText(
+                text: 'Complete Your Profile',
+                textColor: Colors.white,
+                fontWeight: FontWeight.bold),
           ),
           centerTitle: true,
           backgroundColor: Colors.lightBlueAccent,
@@ -172,22 +177,33 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    SizedBox(height: 100.h, child: Image.asset('assets/logo.png', fit: BoxFit.contain)),
+                    SizedBox(
+                        height: 100.h,
+                        child: Image.asset('assets/logo.png',
+                            fit: BoxFit.contain)),
                     SizedBox(height: 16.h),
-                    CustomText(textAlign: TextAlign.center, text: 'Almost There', fontSize: 24.sp, fontWeight: FontWeight.bold),
+                    CustomText(
+                        textAlign: TextAlign.center,
+                        text: 'Almost There',
+                        fontSize: 24.sp,
+                        fontWeight: FontWeight.bold),
                     SizedBox(height: 8.h),
-                    CustomText(text: 'Just a few more details to get you started.', textAlign: TextAlign.center, fontSize: 16.sp),
+                    CustomText(
+                        text: 'Just a few more details to get you started.',
+                        textAlign: TextAlign.center,
+                        fontSize: 16.sp),
                     SizedBox(height: 32.h),
                     CustomTextFormField(
                         controller: _firstNameController,
                         text: 'First Name',
-                        validator: (v) => v!.trim().isEmpty ? 'Please enter your first name' : null
-                    ),
+                        validator: (v) => v!.trim().isEmpty
+                            ? 'Please enter your first name'
+                            : null),
                     SizedBox(height: 12.h),
                     CustomTextFormField(
-                        controller: _lastNameController,
-                        text: 'Last Name',
-                        validator: (v) => null,
+                      controller: _lastNameController,
+                      text: 'Last Name',
+                      validator: (v) => null,
                     ),
                     SizedBox(height: 12.h),
                     PhoneNumberField(
@@ -196,19 +212,25 @@ class _CompleteProfileScreenState extends State<CompleteProfileScreen> with Sing
                     ),
                     SizedBox(height: 8.h),
                     CustomText(
-                      text: 'A 6-digit verification code will be shown in a notification.',
+                      text:
+                          'A 6-digit verification code will be sent to your email.',
                       textAlign: TextAlign.center,
                       textColor: colors.textWeak,
                       fontSize: 13.sp,
                     ),
                     SizedBox(height: 24.h),
                     _sendingOtp
-                        ? const Center(child: CircularProgressIndicator(color: Colors.lightBlueAccent))
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: Colors.lightBlueAccent))
                         : CustomButton(
-                      onPressed: _sendOtp,
-                      buttonColor: Colors.lightBlueAccent,
-                      child: CustomText(text: 'Send OTP', textColor: Colors.white, fontSize: 18.sp),
-                    ),
+                            onPressed: _sendOtp,
+                            buttonColor: Colors.lightBlueAccent,
+                            child: CustomText(
+                                text: 'Send OTP',
+                                textColor: Colors.white,
+                                fontSize: 18.sp),
+                          ),
                     SizedBox(height: 24.h),
                   ],
                 ),

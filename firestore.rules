@@ -1,12 +1,556 @@
 rules_version = '2';
 
+// ============================================================================
+// Flash Chat — Firestore Security Rules (Phase 8)
+//
+// Design goals (in priority order):
+//   1. Messages (1:1 + group) are readable/writable ONLY by chat participants.
+//   2. `users` documents are writable ONLY by their owner; reading stays
+//      authenticated-only because the CURRENT client architecture (pre-backend)
+//      still needs to (a) match the whole phone book for contacts and
+//      (b) read a receiver's FCM/HMS tokens to send clients-side push. Those
+//      reads are a documented residual until Phase 3/4 move push to a backend.
+//   3. No blanket `allow read, write: if request.auth != null` anywhere.
+//   4. Typing/presence/calls/OTP/phone-registry documents are owner-bound.
+//
+// App Check is enforced in the Firebase console (Monitor -> Enforce), not here.
+// These rules are defense-in-depth for a real client that sends App Check tokens.
+//
+// IMPORTANT: The rules language is CEL-expression based and does NOT support
+// `if`, `else`, `for`, or `.contains()` on lists.  All conditional logic uses
+// `?:` ternary.  List membership uses `in`.  `.keys()` returns a list, not a
+// set — call `.toSet()` before `.difference()`.
+//
+// IMPORTANT: Rules must not call `get()` on the same document being read or
+// written (self-referential reads cause "Property undefined" errors).  Instead,
+// use `resource.data` / `request.resource.data` for the current document.
+// `get()` is used only to read PARENT documents from subcollection contexts.
+// ============================================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      // DANGER: Allow all reads and writes to any document in the database.
-      // This is for DEVELOPMENT and DEMO purposes ONLY.
-      // Anyone can read, write, and delete any data.
-      allow read, write: if true;
+
+    // ------------------------------------------------------------------------
+    // Helpers
+    // ------------------------------------------------------------------------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Safe map access: never touch a key that is not present (a missing key
+    // access is an evaluation error in Firestore rules, which silently turns
+    // an otherwise-valid write into PERMISSION_DENIED). The value access is
+    // nested inside the true branch of a ternary so it is never evaluated
+    // when the key is absent.
+    function listField(m, k) {
+      return (k in m) ? (m[k] != null ? m[k] : []) : [];
+    }
+
+    function mapField(m, k) {
+      return (k in m) ? (m[k] != null ? m[k] : {}) : {};
+    }
+
+    function isGroupDocMember(groupId) {
+      let doc = get(/databases/$(database)/documents/groups/$(groupId));
+      let data = doc != null ? doc.data : null;
+      return data != null && ('memberUids' in data) && request.auth.uid in data.memberUids;
+    }
+
+    // Member OR former member (keeps read access up to leave time).
+    function isGroupDocReader(groupId) {
+      let doc = get(/databases/$(database)/documents/groups/$(groupId));
+      let data = doc != null ? doc.data : null;
+      return data != null && (
+        (('memberUids' in data) && request.auth.uid in data.memberUids) ||
+        (('memberLeaveTimestamps' in data) && request.auth.uid in data.memberLeaveTimestamps)
+      );
+    }
+
+    // A former member may only read messages sent on/before their leave time.
+    // NOTE: uses resource.data.timestamp (the message's own timestamp), read
+    // from the document being operated on — no self-referential get().
+    function canReadGroupMessageMessage(groupId) {
+      let doc = get(/databases/$(database)/documents/groups/$(groupId));
+      let data = doc != null ? doc.data : null;
+      let isMember = data != null && ('memberUids' in data) && request.auth.uid in data.memberUids;
+      let isFormer = data != null && ('memberLeaveTimestamps' in data) && request.auth.uid in data.memberLeaveTimestamps;
+      return isMember || (isFormer && (resource == null || ('timestamp' in resource.data && resource.data.timestamp <= data.memberLeaveTimestamps[request.auth.uid])));
+    }
+
+    function isGroupDocAdmin(doc) {
+      let admins = listField(doc, 'adminUids');
+      return admins.size() > 0
+        ? (request.auth.uid in admins)
+        : (('createdBy' in doc) && request.auth.uid == doc.createdBy);
+    }
+
+    // True when a user document is missing or tombstoned (account deleted).
+    // Used to release / reclaim a phone-number registry claim so a deleted
+    // account's number can be registered again.
+    function userAccountGone(uid) {
+      let d = get(/databases/$(database)/documents/users/$(uid));
+      return d == null
+        ? true
+        : (d.data == null
+            ? true
+            : (('isDeleted' in d.data) ? d.data.isDeleted == true : false));
+    }
+
+    // ------------------------------------------------------------------------
+    // Signed-in profile doc; writing requires the uid to be owned by self.
+    // Reads stay authenticated-only (documented residual, see header).
+    // This blocks modifying/forging/deleting other users' profiles and
+    // prevents overwriting another user's FCM/HMS push tokens.
+    // ------------------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && uid == request.auth.uid;
+      allow update: if signedIn() && uid == request.auth.uid;
+      allow delete: if signedIn() && uid == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------------
+    // CHATS — only the two participants may read/write a chat document.
+    // `uids` participant list is frozen after creation (repair path: a
+    // legacy document without `uids` may be filled in by one of its users).
+    // Writes use resource.data/request.resource.data directly (no get()).
+    // ------------------------------------------------------------------------
+    match /chats/{chatId} {
+      function chatUpdatePermitted() {
+        let oldUids = resource.data.uids;
+        let newUids = request.resource.data.uids;
+        return oldUids == null
+          ? (request.auth.uid in newUids)
+          : (request.auth.uid in oldUids && newUids == oldUids);
+      }
+
+      // `resource == null` = reading a chat doc that does not exist yet (new
+      // 1:1 contact). A missing doc leaks nothing, and denying it made the
+      // chat screen's pinned-message listener log a permission error.
+      allow read: if signedIn() && (
+        resource == null || request.auth.uid in resource.data.uids);
+      allow create: if signedIn() &&
+        request.resource.data.uids != null &&
+        request.resource.data.uids.size() == 2 &&
+        request.auth.uid in request.resource.data.uids;
+      allow update: if signedIn() && chatUpdatePermitted();
+      allow delete: if signedIn() && request.auth.uid in resource.data.uids;
+    }
+
+    // ------------------------------------------------------------------------
+    // CHAT MESSAGES — only chat participants. Sender may fully manage their
+    // own message content; any participant may only toggle their OWN
+    // reactions / starred / delete-for-me, or mark status (seen/delivered).
+    // Reads use get() to fetch the PARENT chats/{chatId} document.
+    // ------------------------------------------------------------------------
+    match /chats/{chatId}/messages/{messageId} {
+      // Membership is resolved from the parent chat doc when it exists, but a
+      // brand-new 1:1 chat has NO parent doc until the first message is sent
+      // (the client only writes `chats/{chatId}` on send). Firestore DENIES a
+      // LIST query whose rule only calls get() on a missing parent, which made
+      // opening a chat with a new contact show an error. Canonical 1:1 chat
+      // ids are `chat_<uid1>_<uid2>` (sorted; Firebase uids never contain
+      // "_"), so the requester can be proven a participant from the id alone.
+      function isChatParticipant() {
+        let chatDoc = get(/databases/$(database)/documents/chats/$(chatId));
+        return (chatDoc != null && chatDoc.data.uids != null &&
+          request.auth.uid in chatDoc.data.uids) ||
+          request.auth.uid in chatId.split('_');
+      }
+
+      function recipientInChat() {
+        return !('recipientId' in request.resource.data) ||
+          request.resource.data.recipientId == '' ||
+          request.resource.data.recipientId in
+            get(/databases/$(database)/documents/chats/$(chatId)).data.uids;
+      }
+
+      allow read: if signedIn() && isChatParticipant();
+      allow create: if signedIn() &&
+        request.resource.data.senderId == request.auth.uid &&
+        isChatParticipant() &&
+        recipientInChat();
+      // Sender free-pass = content-only edits (their own text/image/
+      // edit/soft-delete flags).  It must NOT allow touching reaction/
+      // starred/deletedForMe arrays — those are participant-self-service
+      // only (prevents "hide message for B" spoofing).
+      allow update: if signedIn() && isChatParticipant() && (
+        (resource.data.senderId == request.auth.uid && senderContentEditValid()) ||
+        participantSelfServiceUpdate());
+      allow delete: if signedIn() && isChatParticipant();
+    }
+
+    // ------------------------------------------------------------------------
+    // CHAT TYPING — readable by participants, writable only by self.
+    // ------------------------------------------------------------------------
+    match /chats/{chatId}/typing/{uid} {
+      function isChatParticipant() {
+        let chatDoc = get(/databases/$(database)/documents/chats/$(chatId));
+        return (chatDoc != null && chatDoc.data.uids != null &&
+          request.auth.uid in chatDoc.data.uids) ||
+          request.auth.uid in chatId.split('_');
+      }
+      allow read: if signedIn() && isChatParticipant();
+      allow create, update, delete: if signedIn() &&
+        uid == request.auth.uid && isChatParticipant();
+    }
+
+    // ------------------------------------------------------------------------
+    // GROUPS — members may read; admin-only for structural changes;
+    // members may leave (self-removal) / update chat state.
+    // Reads use resource.data directly (no self-referential get()).
+    // ------------------------------------------------------------------------
+    match /groups/{groupId} {
+      // Chat-state keys a regular member may touch. `pinnedMessage` is
+      // intentionally NOT here: setting/altering a pin is admin-only.
+      function memberKeysOk(affected) {
+        let stateKeys = [
+          'memberUids', 'memberLeaveTimestamps', 'hiddenFor',
+          'lastMessage', 'lastMessageTimestamp', 'lastSenderId',
+          'unreadCounts', 'lastSeen'].toSet();
+        let stateOk = affected.difference(stateKeys)
+          .difference(['pinnedMessage'].toSet()).hasOnly([]);
+        // A member may DELETE an existing pin (client-side expiry auto-unpin)
+        // but must never set or alter one (that is isGroupDocAdmin only).
+        let pinOk = !affected.hasAny(['pinnedMessage']) ||
+          (('pinnedMessage' in resource.data) && !('pinnedMessage' in request.resource.data));
+        return stateOk && pinOk;
+      }
+
+      // Chat-state updates must either leave memberUids untouched (e.g.
+      // lastMessage/unreadCounts) OR remove the requester themselves.
+      // Additions are never allowed for a non-admin, and a member can never
+      // remove someone else while staying in.
+      function memberUidsUpdateOk() {
+        let oldList = listField(resource.data, 'memberUids');
+        let newList = listField(request.resource.data, 'memberUids');
+        let added = newList.toSet().difference(oldList.toSet());
+        let removed = oldList.toSet().difference(newList.toSet());
+        let unchanged = added.size() == 0 && removed.size() == 0;
+        let selfRemoval = added.size() == 0 &&
+          (request.auth.uid in oldList) && !(request.auth.uid in newList);
+        return unchanged || selfRemoval;
+      }
+
+      function memberLeaveOk() {
+        let oldLeave = mapField(resource.data, 'memberLeaveTimestamps');
+        let newLeave = mapField(request.resource.data, 'memberLeaveTimestamps');
+        return oldLeave.keys().toSet().difference(newLeave.keys().toSet()).size() == 0 &&
+          newLeave.keys().toSet().difference(oldLeave.keys().toSet())
+            .hasOnly([request.auth.uid]);
+      }
+
+      // Per-member read watermark (`lastSeen.{uid}` timestamp) that powers the
+      // group unread badge. Same shape as memberLeaveTimestamps: a member may
+      // only create/update/clear their OWN key, never anyone else's.
+      function memberLastSeenOk() {
+        let oldSeen = mapField(resource.data, 'lastSeen');
+        let newSeen = mapField(request.resource.data, 'lastSeen');
+        return oldSeen.keys().toSet().difference(newSeen.keys().toSet()).size() == 0 &&
+          newSeen.keys().toSet().difference(oldSeen.keys().toSet())
+            .hasOnly([request.auth.uid]);
+      }
+
+      function memberUpdatePermitted() {
+        let affected = request.resource.data.diff(resource.data).affectedKeys();
+        return memberKeysOk(affected) && memberUidsUpdateOk() &&
+          memberLeaveOk() && memberLastSeenOk();
+      }
+
+      allow read: if signedIn() && (
+        (resource == null) ||
+        ('memberUids' in resource.data && request.auth.uid in resource.data.memberUids) ||
+        ('memberLeaveTimestamps' in resource.data && request.auth.uid in resource.data.memberLeaveTimestamps)
+      );
+      allow create: if signedIn() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.auth.uid in request.resource.data.memberUids;
+      allow update: if signedIn() &&
+        request.auth.uid in resource.data.memberUids && (
+          memberUpdatePermitted() || isGroupDocAdmin(resource.data));
+      allow delete: if signedIn() &&
+        request.auth.uid in resource.data.memberUids &&
+        resource.data.memberUids.hasOnly([request.auth.uid]);
+    }
+
+    // ------------------------------------------------------------------------
+    // GROUP MESSAGES — current members may read/write; former members may
+    // read only messages sent up to their leave time.
+    // ------------------------------------------------------------------------
+    match /groups/{groupId}/messages/{messageId} {
+      allow read: if signedIn() && canReadGroupMessageMessage(groupId);
+      allow create: if signedIn() &&
+        request.resource.data.senderId == request.auth.uid &&
+        isGroupDocMember(groupId);
+      allow update: if signedIn() && isGroupDocMember(groupId) && (
+        (resource.data.senderId == request.auth.uid && senderContentEditValid()) ||
+        participantSelfServiceUpdate());
+      allow delete: if signedIn() && isGroupDocMember(groupId) && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.messageType == 'callActive');
+    }
+
+    // ------------------------------------------------------------------------
+    // GROUP TYPING — same rule as chat typing.
+    // ------------------------------------------------------------------------
+    match /groups/{groupId}/typing/{uid} {
+      allow read: if signedIn() && ( (resource == null) || isGroupDocReader(groupId) );
+      allow create, update, delete: if signedIn() &&
+        uid == request.auth.uid && isGroupDocMember(groupId);
+    }
+
+    // ------------------------------------------------------------------------
+    // CALLS — only participants may read or update. Read access is FIELD-ONLY
+    // (`memberUids` is written at creation: 1:1 -> [caller, receiver], group
+    // -> the group's member snapshot), so collection queries can narrow with
+    // `memberUids array-contains uid` and be statically valid. (Firestore
+    // DENIES list queries whose rule calls get() on other documents, which is
+    // why reads no longer resolve group membership via a get().) Call identity
+    // fields and the member list are immutable; the payload can't be
+    // re-targeted. Uses resource.data directly (no self-referential get()).
+    // ------------------------------------------------------------------------
+    match /calls/{callId} {
+      function isCallActor() {
+        // `receiverId` only exists on 1:1 call docs — group calls never write
+        // it, so it must be guarded AND checked last. The membership checks
+        // come first: for a group member (the common writer: joining, leaving,
+        // hangup, status) the rule short-circuits before ever touching the
+        // missing receiverId field. Guarding it prevents a group update from
+        // being denied by an absent key it never even references.
+        return ('memberUids' in resource.data &&
+            request.auth.uid in resource.data.memberUids) ||
+          ('participants' in resource.data &&
+            request.auth.uid in resource.data.participants) ||
+          request.auth.uid == resource.data.callerId ||
+          ('receiverId' in resource.data &&
+            request.auth.uid == resource.data.receiverId);
+      }
+
+      // 1:1 calls: the member snapshot must be EXACTLY [callerId, receiverId].
+      function oneToOneMemberUidsOk() {
+        return 'memberUids' in request.resource.data &&
+          request.resource.data.memberUids.hasOnly([
+            request.resource.data.callerId,
+            request.resource.data.receiverId,
+          ]) &&
+          request.resource.data.memberUids.size() == 2;
+      }
+
+      // Group calls: the member snapshot must equal the group's member list
+      // (a get() IS allowed here — create validates a single document).
+      function groupMemberUidsOk() {
+        let doc = get(/databases/$(database)/documents/groups/$(request.resource.data.groupId));
+        let data = doc != null ? doc.data : null;
+        let members = data != null && data.memberUids != null ? data.memberUids : [];
+        return data != null &&
+          'memberUids' in request.resource.data &&
+          request.resource.data.memberUids.toSet().size() == members.toSet().size() &&
+          request.resource.data.memberUids.toSet()
+            .difference(members.toSet()).size() == 0;
+      }
+
+      function memberUidsValidOnCreate() {
+        return request.resource.data.isGroup == true
+          ? groupMemberUidsOk()
+          : oneToOneMemberUidsOk();
+      }
+
+      function identityUnchanged() {
+        let groupIdOk = ('groupId' in resource.data)
+          ? (('groupId' in request.resource.data) &&
+              request.resource.data.groupId == resource.data.groupId)
+          : !('groupId' in resource.data);
+
+        // `receiverId` only exists on 1:1 call docs (group calls never write
+        // it). Accessing a missing field in rules evaluates to an error and
+        // DENIES the whole write, so compare it only when both sides have it —
+        // a group update must not trip over an absent field it never touches.
+        let receiverIdOk = ('receiverId' in resource.data)
+          ? (('receiverId' in request.resource.data) &&
+              request.resource.data.receiverId == resource.data.receiverId)
+          : !('receiverId' in resource.data);
+
+        let oldMembers = 'memberUids' in resource.data
+          ? resource.data.memberUids.toSet() : [].toSet();
+        let newMembers = 'memberUids' in request.resource.data
+          ? request.resource.data.memberUids.toSet() : [].toSet();
+
+        let addedMembers = newMembers.difference(oldMembers);
+        let removedMembers = oldMembers.difference(newMembers);
+
+        // Allow memberUids to remain unchanged, OR allow the current user to
+        // add/remove themselves in group calls.
+        let memberUidsOk = (addedMembers.size() == 0 && removedMembers.size() == 0) ||
+          (request.resource.data.isGroup == true &&
+            addedMembers.difference([request.auth.uid].toSet()).size() == 0 &&
+            removedMembers.difference([request.auth.uid].toSet()).size() == 0);
+
+        return request.resource.data.callerId == resource.data.callerId &&
+          receiverIdOk &&
+          request.resource.data.isGroup == resource.data.isGroup &&
+          request.resource.data.isVideo == resource.data.isVideo &&
+          request.resource.data.channelName == resource.data.channelName &&
+          groupIdOk && memberUidsOk;
+      }
+
+      allow read: if signedIn() && (
+        (resource == null) ||
+        ('memberUids' in resource.data && request.auth.uid in resource.data.memberUids) ||
+        request.auth.uid == resource.data.callerId ||
+        request.auth.uid == resource.data.receiverId ||
+        (resource.data.isGroup == true &&
+          'groupId' in resource.data &&
+          isGroupDocReader(resource.data.groupId))
+      );
+      allow create: if signedIn() &&
+        request.resource.data.callerId == request.auth.uid && (
+          (request.resource.data.isGroup == false &&
+            request.resource.data.receiverId is string &&
+            request.resource.data.receiverId != request.auth.uid) ||
+          (request.resource.data.isGroup == true &&
+            isGroupDocMember(request.resource.data.groupId))) &&
+        memberUidsValidOnCreate();
+      allow update: if signedIn() && identityUnchanged() && (
+        isCallActor() ||
+        (resource.data.isGroup == true &&
+          'groupId' in resource.data &&
+          isGroupDocMember(resource.data.groupId))
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // PRESENCE — anyone may read presence; only the owner writes/deletes it.
+    // ------------------------------------------------------------------------
+    match /presence/{uid} {
+      allow read: if signedIn();
+      allow create, update, delete: if signedIn() && uid == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------------
+    // PHONE NUMBERS — the phone registry. Point reads (get) are allowed for
+    // the "is this number taken?" check; LISTING the registry is denied so a
+    // signed-in user cannot enumerate the whole phone registry (and cross-match
+    // it against the phone book).  Writes only by the claiming user.
+    // ------------------------------------------------------------------------
+    match /phoneNumbers/{digits} {
+      allow get: if signedIn();
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      // A user may (re)claim their OWN number, and may take over a stale claim
+      // left behind by a DELETED account (whose user doc is missing or
+      // tombstoned).  This is what lets a number be registered again after the
+      // previous owner deleted their account; a LIVE owner can never be
+      // overwritten.
+      allow update: if signedIn() &&
+        request.resource.data.uid == request.auth.uid &&
+        (resource.data.uid == request.auth.uid || userAccountGone(resource.data.uid));
+      allow delete: if signedIn() &&
+        (resource.data.uid == request.auth.uid || userAccountGone(resource.data.uid));
+    }
+
+    // ------------------------------------------------------------------------
+    // OTP VERIFICATIONS — created pre-profile but always by the claiming
+    // user (CompleteProfile / PhoneVerification); bound to the creating
+    // user's uid; only that user may read/update/delete.
+    // Doc ids are unguessable; collection listing is denied.
+    // ------------------------------------------------------------------------
+    match /otp_verifications/{otpId} {
+      allow create: if signedIn() &&
+        request.resource.data.uid == request.auth.uid;
+      // `resource == null` (a missing session) must stay READABLE so a client
+      // can detect an expired/consumed OTP and prompt "request a new code"
+      // instead of getting an opaque PERMISSION_DENIED. Accessing
+      // `resource.data.uid` on a null doc is an evaluation error that would
+      // otherwise deny the read of a non-existent session. A doc that exists
+      // is still owner-only.
+      allow read: if signedIn() &&
+        (resource == null || resource.data.uid == request.auth.uid);
+      allow update: if signedIn() &&
+        resource.data.uid == request.auth.uid &&
+        request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ------------------------------------------------------------------------
+    // COLLECTION GROUP — starred messages (favorites screen).
+    // A user may only read messages where THEY appear in `starredBy`
+    // (self-star only).  This blocks scanning other users' favorites and
+    // blocks a non-member from reading group/chat messages through the
+    // collection-group wildcard (which would otherwise match ANY document
+    // that merely has a `starredBy` field).
+    // ------------------------------------------------------------------------
+    match /{document=**}/messages/{messageId} {
+      allow read: if signedIn() &&
+        'starredBy' in resource.data &&
+        request.auth.uid in resource.data.starredBy;
+    }
+
+    // ------------------------------------------------------------------------
+    // SHARED HELPER: sender may only edit OWN message CONTENT (never the
+    // reaction / starred / deleted / status arrays — those go through
+    // participantSelfServiceUpdate() so they can only be self-toggled).
+    // ------------------------------------------------------------------------
+    function senderContentEditValid() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let contentKeys = ['text', 'imageUrl', 'isEdited', 'editedText', 'isDeleted'].toSet();
+      return request.resource.data.diff(resource.data).affectedKeys().difference(contentKeys).size() == 0 &&
+        affected.size() > 0;
+    }
+
+    // Self array-toggle: only may add/remove THEMSELVES to/from the list.
+    // Uses listField() so a message written BEFORE this field existed (or by
+    // an older client that omitted it) is treated as an empty list instead of
+    // erroring out and denying the write.
+    function ownArrayToggle(field) {
+      let oldList = listField(resource.data, field);
+      let newList = listField(request.resource.data, field);
+      let added = newList.toSet().difference(oldList.toSet());
+      let removed = oldList.toSet().difference(newList.toSet());
+      return added.hasOnly([request.auth.uid]) && removed.hasOnly([request.auth.uid]) &&
+        (request.auth.uid in oldList) != (request.auth.uid in newList);
+    }
+
+    // Self map-value change: only the value under the requester's OWN key
+    // may be added/removed/changed in a user-keyed map (reactions,
+    // imageReactions).  This is VALUE-aware — a participant cannot forge or
+    // overwrite another user's reaction (nor the value of their own key).
+    // Missing field is treated as an empty map.
+    function selfMapValueChangeValid(field) {
+      let oldMap = mapField(resource.data, field);
+      let newMap = mapField(request.resource.data, field);
+      return oldMap.diff(newMap).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    // Media reactions are a NESTED map: { mediaIndex: { uid: emoji } } (a
+    // message can hold up to 4 photos, video/voice are index 0). A top-level
+    // diff only sees the media index change, so the generic self-map check
+    // denied every media reaction. Each of the 4 possible indexes is checked
+    // independently; only the requester's OWN uid value may change, and the
+    // set of touched indexes must stay within 0..3.
+    function mediaIndexOk(oldMap, newMap, idx) {
+      let oldInner = mapField(oldMap, idx);
+      let newInner = mapField(newMap, idx);
+      return oldInner.diff(newInner).affectedKeys().hasOnly([request.auth.uid]);
+    }
+
+    function mediaReactionsValid() {
+      let oldMap = mapField(resource.data, 'imageReactions');
+      let newMap = mapField(request.resource.data, 'imageReactions');
+      return oldMap.diff(newMap).affectedKeys().hasOnly(['0', '1', '2', '3']) &&
+        mediaIndexOk(oldMap, newMap, '0') &&
+        mediaIndexOk(oldMap, newMap, '1') &&
+        mediaIndexOk(oldMap, newMap, '2') &&
+        mediaIndexOk(oldMap, newMap, '3');
+    }
+
+    function participantSelfServiceUpdate() {
+      let affected = request.resource.data.diff(resource.data).affectedKeys();
+      let serviceKeys = ['status', 'reactions', 'imageReactions', 'starredBy', 'deletedForMe'].toSet();
+      return affected.size() > 0 &&
+        affected.difference(serviceKeys).hasOnly([]) &&
+        (affected.hasAny(['reactions']) ? selfMapValueChangeValid('reactions') : true) &&
+        (affected.hasAny(['imageReactions']) ? mediaReactionsValid() : true) &&
+        (affected.hasAny(['starredBy']) ? ownArrayToggle('starredBy') : true) &&
+        (affected.hasAny(['deletedForMe']) ? ownArrayToggle('deletedForMe') : true);
     }
   }
 }

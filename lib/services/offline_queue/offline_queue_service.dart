@@ -100,7 +100,7 @@ class PendingMessage {
 ///
 /// Persists queued messages to a JSON file per chat and copies media files
 /// (images, videos, voice recordings) to a dedicated directory so they
-/// survive app restarts. On reconnect, the cubit loads the queue and
+/// survive app restarts. On reconnect, the bloc loads the queue and
 /// replays each send action.
 class OfflineQueueService {
   OfflineQueueService._();

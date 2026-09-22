@@ -1,10 +1,11 @@
+import 'package:flash_chat_app/core/constants/app_colors.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-
-import '../../../core/utils/reply_preview.dart';
+import 'reply_preview.dart';
 import '../../../core/utils/video_playback_url.dart';
-import '../../../models/message_model.dart';
+import '../models/message_model.dart';
 
 /// Premium WhatsApp-style reply preview.
 /// Rendered both on the composer (before sending) and inside message
@@ -65,13 +66,12 @@ class ReplyPreviewCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isMe = isOwnMessage;
     final colors = FcAppColors.of(context);
-    final Color accentColor = isMe ? Colors.white : const Color(0xFF0288D1);
-    final Color nameColor = isMe ? Colors.white : const Color(0xFF0288D1);
+    final Color accentColor = isMe ? Colors.white : AppColors.primaryDark;
+    final Color nameColor = isMe ? Colors.white : AppColors.primaryDark;
     final Color contentColor =
         isMe ? Colors.white.withValues(alpha: 0.95) : colors.textPrimary;
-    final Color containerColor = isMe
-        ? Colors.white.withValues(alpha: 0.18)
-        : colors.surfaceMuted;
+    final Color containerColor =
+        isMe ? Colors.white.withValues(alpha: 0.18) : colors.surfaceMuted;
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -107,29 +107,25 @@ class ReplyPreviewCard extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    senderName,
+                  CustomText(
+                    text: senderName,
+                    textColor: nameColor,
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: nameColor,
-                      fontSize: 12.sp,
-                      fontWeight: FontWeight.w700,
-                    ),
                   ),
                   SizedBox(height: 3.h),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Flexible(
-                        child: Text(
-                          preview,
+                        child: CustomText(
+                          text: preview,
+                          textColor: contentColor,
+                          fontSize: 13.sp,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: contentColor,
-                            fontSize: 13.sp,
-                          ),
                         ),
                       ),
                       if ((type == MessageType.voice ||
@@ -247,7 +243,7 @@ class ReplyPreviewCard extends StatelessWidget {
                 : const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF4FC3F7), Color(0xFF0288D1)],
+                    colors: [AppColors.sky, AppColors.primaryDark],
                   ),
           ),
           child: Icon(
@@ -280,7 +276,7 @@ class ReplyPreviewCard extends StatelessWidget {
           color: backgroundColor,
           borderRadius: BorderRadius.circular(10.r),
         ),
-        child: Icon(icon, color: const Color(0xFF0288D1), size: 24.sp),
+        child: Icon(icon, color: AppColors.primaryDark, size: 24.sp),
       );
     }
     return Stack(
@@ -297,7 +293,7 @@ class ReplyPreviewCard extends StatelessWidget {
                 width: 46.w,
                 height: 46.w,
                 color: backgroundColor,
-                child: Icon(icon, color: const Color(0xFF0288D1), size: 24.sp),
+                child: Icon(icon, color: AppColors.primaryDark, size: 24.sp),
               ),
               loadingBuilder: (context, child, progress) => progress == null
                   ? child
@@ -305,8 +301,8 @@ class ReplyPreviewCard extends StatelessWidget {
                       width: 46.w,
                       height: 46.w,
                       color: backgroundColor,
-                      child: Icon(icon,
-                          color: const Color(0xFF0288D1), size: 20.sp),
+                      child:
+                          Icon(icon, color: AppColors.primaryDark, size: 20.sp),
                     ),
             ),
           ),
@@ -324,14 +320,12 @@ class ReplyPreviewCard extends StatelessWidget {
         color: Colors.black.withValues(alpha: 0.65),
         borderRadius: BorderRadius.circular(6.r),
       ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          fontFeatures: [FontFeature.tabularFigures()],
-        ),
+      child: CustomText(
+        text: text,
+        textColor: Colors.white,
+        fontSize: 9,
+        fontWeight: FontWeight.w700,
+        fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );
   }
@@ -348,15 +342,13 @@ class ReplyPreviewCard extends StatelessWidget {
             : colors.surfaceDim.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(6.r),
       ),
-      child: Text(
-        _formatDuration(seconds),
-        style: TextStyle(
-          color: (isMe ? Colors.white : colors.textSecondary)
-              .withValues(alpha: 0.9),
-          fontSize: 10.sp,
-          fontWeight: FontWeight.w700,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
+      child: CustomText(
+        text: _formatDuration(seconds),
+        textColor:
+            (isMe ? Colors.white : colors.textSecondary).withValues(alpha: 0.9),
+        fontSize: 10.sp,
+        fontWeight: FontWeight.w700,
+        fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );
   }

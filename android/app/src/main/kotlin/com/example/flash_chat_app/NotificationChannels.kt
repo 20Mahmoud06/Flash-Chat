@@ -41,7 +41,7 @@ object NotificationChannels {
     const val CHANNEL_ID = "flash_chat_custom_v13"
     const val CHANNEL_NAME = "Flash Chat Messages"
 
-    const val CALL_CHANNEL_ID = "flash_chat_calls_v1"
+    const val CALL_CHANNEL_ID = "flash_chat_calls_v3"
     const val CALL_CHANNEL_NAME = "Incoming Calls"
 
     /// Matches the caller-side ring timeout.
@@ -117,25 +117,41 @@ object NotificationChannels {
     /**
      * Creates the incoming-call channel used by the native full-screen-intent
      * ring. IMPORTANCE_HIGH is required for full-screen-intent (FSI)
-     * notifications to be launched by the system over the lock screen. The
-     * channel is SILENT because the ring screen itself plays the ringtone
-     * (CallkitSoundPlayerManager in CallkitIncomingActivity when launched by a
-     * native push) — a channel sound would double the ring. Vibration is kept.
+     * notifications to be launched by the system over the lock screen.
+     *
+     * The channel plays the bundled ringtone. On MIUI / HyperOS a HIGH-
+     * importance channel created with [setSound][NotificationChannel.setSound]
+     * `(null, null)` is silently downgraded: the FSI launches but the system
+     * suppresses audio from the resulting Activity. Giving the channel a real
+     * sound keeps the importance intact and the ring audible. The
+     * [CallkitIncomingActivity] cancels the notification as soon as it
+     * appears, so any overlap with the Activity's own MediaPlayer ring is
+     * negligible.
      */
     fun createCallChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            // Delete old v1 and v2 channels (v1 was created with setSound(null,null),
+            // v2 may have frozen incorrect settings on MIUI/HyperOS). A fresh v3
+            // channel with the correct ringtone is created below.
+            try { nm.deleteNotificationChannel("flash_chat_calls_v1") } catch (_: Exception) {}
+            try { nm.deleteNotificationChannel("flash_chat_calls_v2") } catch (_: Exception) {}
             val channel = NotificationChannel(
                 CALL_CHANNEL_ID,
                 CALL_CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "Incoming call alerts"
-                // Silent: the ring screen plays the ringtone itself.
-                setSound(null, null)
+                setSound(
+                    Uri.parse("android.resource://${context.packageName}/${R.raw.ringtone}"),
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
                 enableVibration(true)
             }
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             nm.createNotificationChannel(channel)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create call channel: ${e.message}")
@@ -149,6 +165,43 @@ object NotificationChannels {
      * CallkitIncomingActivity.onCreate).
      */
     fun callNotificationId(callId: String): Int = 3_000_000 + (callId.hashCode() and 0xFFFFF)
+
+    /**
+     * Posts the SINGLE, non-ringing "missed call" notification for [callId],
+     * using the same stable per-call id as [postFullScreenCallRing]. Any
+     * leftover ring notification for the same call is replaced instead of
+     * stacked, so across Dart + native and repeated app opens there is at most
+     * ONE active notification per call. Uses the chat channel (not the
+     * ringing call channel): a missed call must never re-ring the device.
+     */
+    fun postMissedCallNotification(
+        context: Context,
+        callId: String,
+        callerName: String,
+        isVideo: Boolean
+    ) {
+        createChatChannel(context)
+        val id = callNotificationId(callId)
+        val caller = if (callerName.isBlank()) "Incoming call" else callerName
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setLargeIcon(BitmapFactory.decodeResource(context.resources, R.mipmap.ic_launcher))
+            .setContentTitle(caller)
+            .setContentText(if (isVideo) "Missed video call" else "Missed voice call")
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setColor(Color.parseColor("#4CAF50"))
+            .setAutoCancel(true)
+            .setSound(soundUri(context))
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(id, builder.build())
+            Log.d(TAG, "Missed-call notification posted (id=$id)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to post missed-call notification: ${e.message}")
+        }
+    }
 
     /**
      * Posts the notification that makes an incoming call ring when the app is

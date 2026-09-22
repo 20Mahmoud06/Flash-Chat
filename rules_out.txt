@@ -1,0 +1,111 @@
+
+=== USERS ===
+PASS  A reads own users/A
+PASS  A reads other user users/B (contacts/FCM match) [documented residual]
+PASS  B lists users collection
+PASS  A updates own users/A
+PASS  new signup D creates own users/D
+PASS  C updates other user B profile
+PASS  C deletes other user B profile
+PASS  C creates users/B (forge another user doc)
+PASS  anon reads users/A
+
+=== CHATS (participant-only) ===
+PASS  A gets chats/chatAB
+PASS  A creates new chat A-C
+PASS  C gets chats/chatAB (non-participant)
+PASS  C lists chats(participant) — no chatAB leak
+PASS  C cannot create chats with others only
+PASS  A updates chatAB lastMessage
+PASS  participant cannot rewrite uids (freeze participants)
+PASS  C deletes chatAB
+
+=== CHAT MESSAGES ===
+FAIL  A reads chatAB messages
+FAIL  B reads chatAB messages (recipient)
+FAIL  A creates a message (participant sender) -> 7 PERMISSION_DENIED: 
+FAIL  A edits own message -> 7 PERMISSION_DENIED: 
+FAIL  A soft-deletes own message -> 7 PERMISSION_DENIED: 
+FAIL  B marks message seen (status) -> 7 PERMISSION_DENIED: 
+FAIL  A adds own reaction -> 7 PERMISSION_DENIED: 
+FAIL  A removes own reaction -> 7 PERMISSION_DENIED: 
+PASS  B cannot forge A reaction
+FAIL  A stars for self -> 7 PERMISSION_DENIED: 
+PASS  B un-stars A (forges vanity) invalid
+FAIL  B deleteForMe self -> 7 PERMISSION_DENIED: 
+PASS  A cannot hide message for B (deleteForMe spoof)
+PASS  B cannot edit A message text
+FAIL  B deletes any message (conversation cleanup) -> 7 PERMISSION_DENIED: 
+PASS  C reads chatAB messages (not participant)
+PASS  C creates message in chatAB
+PASS  C lists chatAB messages — empty/no docs
+
+=== TYPING ===
+FAIL  A writes own typing doc -> 7 PERMISSION_DENIED: 
+FAIL  B reads typing in chatAB
+PASS  C reads typing in chatAB
+PASS  C writes typing as A (impersonate)
+
+=== GROUPS ===
+PASS  member B reads group g1
+PASS  A creates a group
+PASS  admin A adds member D
+PASS  non-admin B adds member D (denied)
+PASS  non-admin B renames group (denied)
+PASS  admin A renames group (allowed)
+PASS  admin A deletes group (soft)
+FAIL  member B leaves (self-removal) -> 7 PERMISSION_DENIED: 
+PASS  non-admin B removes member A (denied)
+PASS  non-member C reads group g1
+FAIL  non-member C reads group message -> expected failure but it succeeded
+FAIL  member A reads group messages
+FAIL  A sends group message -> 7 PERMISSION_DENIED: 
+PASS  C sends message to group (denied)
+PASS  B cannot edit A group message
+
+=== GROUPS (former member read window) ===
+PASS  former B reads OLD group message (<= leave time)
+PASS  former B reads NEW group message (> leave time) denied
+PASS  former B cannot write to group
+
+=== CALLS ===
+PASS  A creates 1:1 call (caller)
+PASS  B reads ringing call (receiver)
+FAIL  B accepts (status + participants) -> 7 PERMISSION_DENIED: 
+PASS  C reads call (not involved)
+PASS  C cannot impersonate caller in create
+PASS  B cannot re-target call (change receiver)
+PASS  A cannot change channel (identity frozen)
+PASS  C sees no calls they are not part of
+
+=== PRESENCE ===
+PASS  A writes own presence
+PASS  B reads A presence
+PASS  C writes A presence (impersonate)
+PASS  C deletes A presence
+
+=== OTP (owner-bound) ===
+PASS  A creates OTP session
+PASS  A reads own OTP
+PASS  A updates own OTP (wrong attempt)
+PASS  A deletes own OTP
+PASS  B reads A OTP (signup hijack blocked)
+PASS  B updates A OTP
+PASS  B deletes A OTP
+PASS  A creates OTP with forged owner
+PASS  anon reads OTP
+
+=== PHONE REGISTRY ===
+PASS  B reads own claim
+PASS  A reads B claim (is-phone-taken check)
+PASS  A claims a new number
+PASS  A cannot steal B claim (overwrite)
+PASS  C deletes B claim
+PASS  C cannot list phone registry
+
+=== FAVORITES (collectionGroup messages) ===
+PASS  A favorites via collectionGroup (participant, starredBy A)
+FAIL  C collectionGroup scan leaks nothing -> leaked docs: mStarred
+
+====================================
+RESULT: 67 passed, 19 failed

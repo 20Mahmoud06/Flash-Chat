@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,14 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 // ignore: implementation_imports
-import 'package:flutter_local_notifications/src/platform_specifics/android/enums.dart' as notif_enums;
+import 'package:flutter_local_notifications/src/platform_specifics/android/enums.dart'
+    as notif_enums;
 import '../block/block_service.dart';
-import '../chat/active_chat.dart';
+import '../../features/chat/services/active_chat.dart';
 import '../deep_link_service.dart';
 import '../hms/hms_native_channel.dart';
-import '../mute/mute_service.dart';
 import '../notifications/missed_notifications_service.dart';
-import '../../core/utils/callkit_helper.dart';
+import '../../features/calls/services/callkit_helper.dart';
 import '../../core/utils/notification_ids.dart';
 import '../../features/calls/services/call_service.dart';
 
@@ -28,7 +28,7 @@ class FcmService {
   static const String channelName = 'Flash Chat Messages';
 
   static const AndroidNotificationChannel chatChannel =
-  AndroidNotificationChannel(
+      AndroidNotificationChannel(
     channelId,
     channelName,
     description: 'Notifications for chat messages',
@@ -42,29 +42,38 @@ class FcmService {
 
   Future<void> initializeFCM() async {
     try {
+      // Register this FIRST of all: FirebaseAuth restores the persisted
+      // session asynchronously, and on a cold launch — notably the first open
+      // right after an app update — that restore can complete while the rest
+      // of this setup is still running. If the restore broadcast fires before
+      // this listener exists, the device token is never written to Firestore
+      // this session and the server keeps pushing to stale tokens, so the
+      // device silently stops receiving ALL pushes until the next launch.
+      _reRegisterTokenOnSignIn();
+
       await _initLocal();
+
+      await _setupListeners();
 
       // Always save the token — the server needs it regardless of whether
       // the local device shows notification banners. When the user later
       // enables notifications (onboarding or profile toggle) the token is
       // already in Firestore so pushes start arriving immediately.
       await _saveToken();
-
-      // Listeners are always set up so taps, calls and deep links keep working
-      // even when the notification permission was denied.
-      await _setupListeners();
-
-      // Re-register the token at every sign-in (and after a reinstall, where
-      // the cold-start save above is skipped because nobody is logged in yet).
-      // Without this, a fresh install / re-login leaves `users/{uid}.fcmTokens`
-      // stale or empty, so the device silently stops receiving ALL pushes
-      // (calls and chat alike) until the permission flow happens to re-save it.
-      _auth.authStateChanges().listen((user) {
-        if (user != null) _saveToken();
-      });
     } catch (e) {
       debugPrint('⚠️ FCM init failed (non-fatal): $e');
     }
+  }
+
+  /// Re-registers the token at every sign-in (and after a reinstall, where the
+  /// cold-start save is skipped because nobody is logged in yet). Without this,
+  /// a fresh install / re-login leaves `users/{uid}.fcmTokens` stale or empty,
+  /// so the device silently stops receiving ALL pushes (calls and chat alike)
+  /// until the permission flow happens to re-save it.
+  void _reRegisterTokenOnSignIn() {
+    _auth.authStateChanges().listen((user) {
+      if (user != null) _saveToken();
+    });
   }
 
   /// Requests notification permission (shows the system dialog on
@@ -82,8 +91,8 @@ class FcmService {
       final androidPlugin = FlutterLocalNotificationsPlugin()
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
-      androidGranted = await androidPlugin?.requestNotificationsPermission() ??
-          true;
+      androidGranted =
+          await androidPlugin?.requestNotificationsPermission() ?? true;
     } catch (e) {
       debugPrint('⚠️ Android notification permission request failed: $e');
     }
@@ -137,13 +146,15 @@ class FcmService {
       iOS: darwinInit,
     );
 
-    final androidPlugin = _local.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _local.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
 
     await _local.initialize(
       initSettings,
       onDidReceiveNotificationResponse: (response) async {
         if (response.payload != null) {
-          DeepLinkService().handleNotificationTap(jsonDecode(response.payload!));
+          DeepLinkService()
+              .handleNotificationTap(jsonDecode(response.payload!));
         }
       },
     );
@@ -152,10 +163,15 @@ class FcmService {
   }
 
   Future<void> _saveToken({String? token}) async {
+    // `currentUser` is null until FirebaseAuth reads the persisted session
+    // back from disk. On a cold start (especially right after an app update)
+    // that can race this save, so wait briefly for the session before giving
+    // up — otherwise the token is never registered this session.
+    final uid = await _waitForSignedInUser();
+
     for (int i = 0; i < 3; i++) {
       try {
         final resolved = token ?? await _fcm.getToken();
-        final uid = _auth.currentUser?.uid;
 
         if (resolved != null && uid != null) {
           await _firestore.collection('users').doc(uid).set({
@@ -163,14 +179,23 @@ class FcmService {
           }, SetOptions(merge: true));
         }
         break;
-      }
-      catch (e) {
+      } catch (e) {
         debugPrint('⚠️ FCM token not available yet: $e');
         await Future.delayed(const Duration(seconds: 2));
       }
     }
   }
 
+  /// Waits up to ~2s for the persisted auth session to restore so the initial
+  /// token registration after an app update can't be dropped.
+  Future<String?> _waitForSignedInUser() async {
+    var uid = _auth.currentUser?.uid;
+    for (var i = 0; i < 5 && uid == null; i++) {
+      await Future.delayed(const Duration(milliseconds: 400));
+      uid = _auth.currentUser?.uid;
+    }
+    return uid;
+  }
 
   // ---------------- LISTENERS ----------------
 
@@ -242,7 +267,8 @@ class FcmService {
         try {
           if (await BlockService.isBlockedPair(
               data['callerId'] as String, _auth.currentUser!.uid)) {
-            debugPrint('Blocking FCM call from blocked user: ${data['callerId']}');
+            debugPrint(
+                'Blocking FCM call from blocked user: ${data['callerId']}');
             return;
           }
         } catch (e) {
@@ -263,8 +289,7 @@ class FcmService {
         if (data.containsKey('groupBio')) 'groupBio': data['groupBio'],
         if (data.containsKey('callerAvatar'))
           'callerAvatar': data['callerAvatar'],
-        if (data.containsKey('groupAvatar'))
-          'groupAvatar': data['groupAvatar'],
+        if (data.containsKey('groupAvatar')) 'groupAvatar': data['groupAvatar'],
       };
       await showIncomingCall(
         callerName: data['callerName'] ?? 'Unknown',
@@ -277,6 +302,9 @@ class FcmService {
       );
       CallService.setRingCleanupTimer(callId);
       CallService.addCallStatusListener(callId);
+      // Persist the guard so a re-delivered push (or a cold-start Firestore
+      // re-fire of the same ringing doc) can never ring this call again.
+      CallService.markCallHandled(callId.toString());
       return;
     }
 
@@ -293,12 +321,6 @@ class FcmService {
     }
     // 🔕 Ignore group chat if already open
     if (data['type'] == 'group_chat' && data['groupId'] == activeGroupId) {
-      return;
-    }
-    // 🔕 Ignore messages from contacts I muted (sender-side check already
-    // prevents the push; this is the backup for older senders / HMS).
-    if (data['type'] == 'chat' &&
-        await MuteService.isMuted(data['senderId']?.toString() ?? '')) {
       return;
     }
 
@@ -391,10 +413,73 @@ class FcmService {
     return FcmService().showNotificationForData(data);
   }
 
+  /// Shows a single, NON-ringing "missed call" notification for [callId].
+  ///
+  /// Uses the same stable per-call id as the native ring
+  /// ([callNotificationId]), so it replaces any leftover ring notification for
+  /// that call and can never stack — across the Dart + native paths and across
+  /// repeated app opens. Skipped entirely when a live ring for the same call is
+  /// still on screen.
+  static Future<void> showMissedCallNotification({
+    required String callId,
+    required String callerName,
+    required bool isVideo,
+    String? callerId,
+  }) async {
+    if (callId.isEmpty) return;
+    final id = callNotificationId(callId);
+    final body = isVideo ? 'Missed video call' : 'Missed voice call';
+    final displayName = callerName.isEmpty ? 'Unknown' : callerName;
+
+    if (await hasActiveNotification(id)) return;
+    if (!await _canShowNotification()) return;
+
+    final androidDetails = AndroidNotificationDetails(
+      chatChannel.id,
+      chatChannel.name,
+      channelDescription: chatChannel.description,
+      importance: notif_enums.Importance.max,
+      priority: notif_enums.Priority.high,
+      icon: '@drawable/ic_notification',
+      largeIcon: const DrawableResourceAndroidBitmap('mipmap/ic_launcher'),
+      playSound: true,
+      enableVibration: true,
+      sound: const RawResourceAndroidNotificationSound('alert'),
+      styleInformation: const DefaultStyleInformation(true, true),
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+      sound: 'alert.wav',
+    );
+
+    // Tapping opens the caller's chat (see DeepLinkService).
+    final data = <String, dynamic>{
+      'type': 'chat',
+      'title': displayName,
+      'body': body,
+      if (callerId != null && callerId.isNotEmpty) 'senderId': callerId,
+    };
+    try {
+      await _local.show(
+        id,
+        displayName,
+        body,
+        NotificationDetails(android: androidDetails, iOS: iosDetails),
+        payload: jsonEncode(data),
+      );
+      debugPrint('Missed-call notification shown for $callId (id=$id)');
+    } catch (e) {
+      debugPrint('Failed to show missed-call notification: $e');
+    }
+  }
+
   /// Whether a notification can be shown given the current permission state.
   static Future<bool> _canShowNotification() async {
-    final androidPlugin = _local
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _local.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
     try {
       final enabled = await androidPlugin?.areNotificationsEnabled();
       if (enabled == false) return false;

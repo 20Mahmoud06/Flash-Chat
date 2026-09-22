@@ -1,13 +1,15 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import '../core/routes/navigation_service.dart';
 import '../core/routes/route_names.dart';
 import '../core/utils/call_utils.dart';
-import '../models/call_arguments.dart';
-import '../models/user_model.dart';
-import '../models/group_model.dart';
+import '../features/calls/models/call_arguments.dart';
+import '../features/calls/services/call_service.dart';
+import '../features/profile/models/user_model.dart';
+import '../features/groups/models/group_model.dart';
 
 class DeepLinkService {
   static final DeepLinkService _instance = DeepLinkService._internal();
@@ -84,6 +86,15 @@ class DeepLinkService {
       if (data['type'] == 'call') {
         await applyCallerNickname(data);
         final args = CallArguments.fromMap(data);
+        // Register as a participant BEFORE navigating (the group "Join call"
+        // card path already does this). A tap on a ring/notification that only
+        // opens the call page — without joinCall — left the caller seeing an
+        // unanswered ring and this device never appearing as in-call, so the
+        // user had to fall back to opening the chat and tapping "Join call".
+        final myUid = FirebaseAuth.instance.currentUser?.uid;
+        if (myUid != null && data['callerId']?.toString() != myUid) {
+          await CallService.joinCall(args.callId, myUid);
+        }
         SchedulerBinding.instance.addPostFrameCallback((_) {
           navigatorKey.currentState?.pushNamed(
             args.isVideo ? RouteNames.videoCallPage : RouteNames.voiceCallPage,

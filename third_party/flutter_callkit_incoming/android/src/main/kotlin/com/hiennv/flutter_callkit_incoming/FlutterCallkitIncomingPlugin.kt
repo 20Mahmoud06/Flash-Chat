@@ -56,6 +56,43 @@ class FlutterCallkitIncomingPlugin : FlutterPlugin, MethodCallHandler, ActivityA
         }
 
         /**
+         * Cold-start accept replay.
+         *
+         * When the app was killed, the accept event from the native ring is
+         * emitted before the Dart event-channel listener attaches, so it is
+         * dropped and the call would only be recovered by a best-effort
+         * Firestore poll. Stash the accept payload here (the accept broadcast
+         * runs in the same process that later boots the Flutter engine) and
+         * replay it from [EventCallbackHandler.onListen] the moment the Dart
+         * listener subscribes, so answering from a killed app flows through
+         * the normal Dart accept handler. A short TTL prevents a stale accept
+         * (e.g. the app was never booted again) from joining an old call on a
+         * later launch.
+         */
+        private const val PENDING_ACCEPT_TTL_MS = 60_000L
+
+        @Volatile
+        private var pendingAcceptEvent: Pair<String, Map<String, Any?>>? = null
+
+        @Volatile
+        private var pendingAcceptAtMs = 0L
+
+        @Synchronized
+        fun storePendingAcceptEvent(event: String, body: Map<String, Any?>) {
+            pendingAcceptEvent = event to body
+            pendingAcceptAtMs = System.currentTimeMillis()
+        }
+
+        @Synchronized
+        fun drainPendingAcceptEvent(): Pair<String, Map<String, Any?>>? {
+            val pending = pendingAcceptEvent
+            pendingAcceptEvent = null
+            if (pending == null) return null
+            if (System.currentTimeMillis() - pendingAcceptAtMs > PENDING_ACCEPT_TTL_MS) return null
+            return pending
+        }
+
+        /**
          * Register a callback to receive call events (accept/decline) natively.
          * This allows other plugins/services to handle call events
          * even when Flutter engine is terminated.
@@ -421,6 +458,11 @@ class FlutterCallkitIncomingPlugin : FlutterPlugin, MethodCallHandler, ActivityA
 
         override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
             eventSink = sink
+            // Replay a cold-start ACCEPT that was dropped while the engine was
+            // dead (before this listener attached).
+            FlutterCallkitIncomingPlugin.drainPendingAcceptEvent()?.let { pending ->
+                send(pending.first, pending.second)
+            }
         }
 
         fun send(event: String, body: Map<String, Any?>) {

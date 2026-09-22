@@ -1,26 +1,26 @@
 import 'package:flash_chat_app/core/routes/route_names.dart';
-import 'package:flash_chat_app/models/group_model.dart';
-import 'package:flash_chat_app/models/phone_verification_arguments.dart';
-import 'package:flash_chat_app/models/user_model.dart';
+import 'package:flash_chat_app/features/groups/models/group_model.dart';
+import 'package:flash_chat_app/features/auth/models/phone_verification_arguments.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
 import 'package:flash_chat_app/features/auth/screens/login_screen.dart';
 import 'package:flash_chat_app/features/auth/screens/phone_verification_screen.dart';
-import 'package:flash_chat_app/screens/splash_screen.dart';
-import 'package:flash_chat_app/screens/welcome_screen.dart';
+import 'package:flash_chat_app/features/onboarding/screens/splash_screen.dart';
+import 'package:flash_chat_app/features/onboarding/screens/welcome_screen.dart';
 import 'package:flutter/material.dart';
 import '../../features/auth/screens/signup_screen.dart';
 import '../../features/chat/screens/chat_screen.dart';
-import '../../features/chat/screens/group_chat_screen.dart';
-import '../../features/chat/screens/contacts_screen.dart';
+import '../../features/groups/screens/group_chat_screen.dart';
+import '../../features/contacts/screens/contacts_screen.dart';
 import '../../features/profile/screens/edit_profile_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
-import '../../models/call_arguments.dart';
+import '../../features/calls/models/call_arguments.dart';
 import '../../features/auth/screens/recovery_screen.dart';
 import '../../features/calls/screens/voice_call_page.dart';
-import '../../features/chat/screens/home_screen.dart';
+import '../../features/home/screens/home_screen.dart';
 import '../../features/calls/screens/video_call_page.dart';
 import '../../features/profile/screens/complete_profile_screen.dart';
 import '../../features/groups/screens/edit_group_screen.dart';
-import '../../features/profile/screens/sender_profile_screen.dart';
+import '../../features/sender_profile/screens/sender_profile_screen.dart';
 import '../../features/profile/screens/blocked_users_screen.dart';
 
 class AppRouter {

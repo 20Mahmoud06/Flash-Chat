@@ -4,10 +4,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
 
-import '../../../models/user_model.dart';
+import '../../profile/models/user_model.dart';
 import '../../../core/utils/page_transition.dart';
 import '../../../shared/widgets/custom_text.dart';
-import '../../chat/screens/group_chat_screen.dart';
+import 'group_chat_screen.dart';
 import '../cubit/group_cubit.dart';
 import '../cubit/group_state.dart';
 
@@ -56,11 +56,16 @@ class _CreateGroupViewState extends State<_CreateGroupView> {
   void _pickEmoji() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => EmojiPicker(
-        onEmojiSelected: (category, emoji) {
-          setState(() => _groupEmoji = emoji.emoji);
-          Navigator.pop(context);
-        },
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: EmojiPicker(
+          onEmojiSelected: (category, emoji) {
+            setState(() => _groupEmoji = emoji.emoji);
+            Navigator.pop(context);
+          },
+        ),
       ),
     );
   }
@@ -163,14 +168,12 @@ class _CreateGroupViewState extends State<_CreateGroupView> {
                               focusedBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: const BorderSide(
-                                    color: Colors.lightBlueAccent,
-                                    width: 1.5),
+                                    color: Colors.lightBlueAccent, width: 1.5),
                               ),
                               disabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                                 borderSide: BorderSide(
-                                    color: Colors.grey.shade300,
-                                    width: 1),
+                                    color: Colors.grey.shade300, width: 1),
                               ),
                             ),
                             textCapitalization: TextCapitalization.sentences,
@@ -197,8 +200,8 @@ class _CreateGroupViewState extends State<_CreateGroupView> {
                         ),
                         disabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide(
-                              color: Colors.grey.shade300, width: 1),
+                          borderSide:
+                              BorderSide(color: Colors.grey.shade300, width: 1),
                         ),
                       ),
                       maxLines: 3,
@@ -209,14 +212,12 @@ class _CreateGroupViewState extends State<_CreateGroupView> {
                         final remaining = 70 - currentLength;
                         return Padding(
                           padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '$remaining',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: remaining < 0
-                                  ? Colors.red
-                                  : Colors.grey.shade600,
-                            ),
+                          child: CustomText(
+                            text: '$remaining',
+                            fontSize: 12,
+                            textColor: remaining < 0
+                                ? Colors.red
+                                : Colors.grey.shade600,
                           ),
                         );
                       },
@@ -251,10 +252,10 @@ class _CreateGroupViewState extends State<_CreateGroupView> {
                               ),
                             ),
                             SizedBox(height: 4.h),
-                            Text(
-                              member.firstName,
+                            CustomText(
+                              text: member.firstName,
+                              fontSize: 12.sp,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(fontSize: 12.sp),
                             ),
                           ],
                         );

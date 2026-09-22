@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -89,17 +90,15 @@ class _SubtitleText extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(height: 1.h),
-        Text(
-          text,
+        CustomText(
+          text: text,
+          textColor: highlighted
+              ? Colors.greenAccent
+              : Colors.white.withValues(alpha: 0.85),
+          fontWeight: FontWeight.w400,
+          fontSize: 11.5.sp,
           overflow: TextOverflow.ellipsis,
           maxLines: 1,
-          style: TextStyle(
-            color: highlighted
-                ? Colors.greenAccent
-                : Colors.white.withValues(alpha: 0.85),
-            fontWeight: FontWeight.w400,
-            fontSize: 11.5.sp,
-          ),
         ),
       ],
     );

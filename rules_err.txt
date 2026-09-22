@@ -1,0 +1,82 @@
+[2026-09-14T14:23:08.878Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53da error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'update' @ L81
+[2026-09-14T14:23:08.890Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53db error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L82
+[2026-09-14T14:23:08.904Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53dc error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L80, false for 'update' @ L81
+[2026-09-14T14:23:09.079Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53df error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L106, evaluation error at L109:24 for 'update' @ L109, false for 'create' @ L106
+[2026-09-14T14:23:09.121Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53d8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L109:24 for 'update' @ L109, false for 'update' @ L109
+[2026-09-14T14:23:09.140Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L110:24 for 'delete' @ L110, false for 'delete' @ L110
+[2026-09-14T14:23:09.211Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L135:24 for 'create' @ L135, evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'create' @ L135
+[2026-09-14T14:23:09.234Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.246Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.266Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.279Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.291Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.311Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e7 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.322Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.337Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53e9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, false for 'update' @ L139
+[2026-09-14T14:23:09.357Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53ea error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.370Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53eb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.381Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53ec error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'update' @ L139
+[2026-09-14T14:23:09.405Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53ed error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L142:24 for 'delete' @ L142, Property uids is undefined on object. for 'delete' @ L142
+[2026-09-14T14:23:09.438Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53ee error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L135:24 for 'create' @ L135, evaluation error at L139:24 for 'update' @ L139, Property uids is undefined on object. for 'create' @ L135
+[2026-09-14T14:23:09.468Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53ef error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L154:40 for 'create' @ L154, evaluation error at L154:40 for 'update' @ L154, Property uids is undefined on object. for 'update' @ L154
+[2026-09-14T14:23:09.526Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f0 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L154, false for 'update' @ L154
+[2026-09-14T14:23:09.577Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f2 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L196:24 for 'update' @ L196, false for 'update' @ L196
+[2026-09-14T14:23:09.592Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f3 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L196:24 for 'update' @ L196, false for 'update' @ L196
+[2026-09-14T14:23:09.641Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f4 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L196:24 for 'update' @ L196, false for 'update' @ L196
+[2026-09-14T14:23:09.654Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f5 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L196:24 for 'update' @ L196, false for 'update' @ L196
+[2026-09-14T14:23:09.718Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f1 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L212:24 for 'create' @ L212, evaluation error at L215:24 for 'update' @ L215, Property memberUids is undefined on object. for 'create' @ L212
+[2026-09-14T14:23:09.730Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f6 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L212:24 for 'create' @ L212, evaluation error at L215:24 for 'update' @ L215, Property memberUids is undefined on object. for 'create' @ L212
+[2026-09-14T14:23:09.747Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f7 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L215:24 for 'update' @ L215, false for 'update' @ L215
+[2026-09-14T14:23:09.811Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f8 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L212:24 for 'create' @ L212, evaluation error at L215:24 for 'update' @ L215, Property memberUids is undefined on object. for 'create' @ L212
+[2026-09-14T14:23:09.844Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53fa error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L262:24 for 'update' @ L262, Property groupId is undefined on object. for 'update' @ L262
+[2026-09-14T14:23:09.884Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53fb error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L255
+[2026-09-14T14:23:09.892Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53fc error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L262:24 for 'update' @ L262, Property groupId is undefined on object. for 'update' @ L262
+[2026-09-14T14:23:09.900Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53f9 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L262:24 for 'update' @ L262, false for 'update' @ L262
+[2026-09-14T14:23:09.948Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53fe error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L270, false for 'update' @ L270
+[2026-09-14T14:23:09.961Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53ff error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'delete' @ L271
+[2026-09-14T14:23:10.010Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad5400 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L297:24 for 'update' @ L297, Null value error. for 'update' @ L297
+[2026-09-14T14:23:10.027Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad5401 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L300:24 for 'delete' @ L300, Null value error. for 'delete' @ L300
+[2026-09-14T14:23:10.031Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad53fd error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L292, false for 'update' @ L297
+[2026-09-14T14:23:10.065Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad5402 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+false for 'create' @ L280, evaluation error at L281:24 for 'update' @ L281, false for 'update' @ L281
+[2026-09-14T14:23:10.077Z]  @firebase/firestore: Firestore (10.14.1): GrpcConnection RPC 'Write' stream 0x4dad5403 error. Code: 7 Message: 7 PERMISSION_DENIED: 
+evaluation error at L282:24 for 'delete' @ L282, false for 'delete' @ L282

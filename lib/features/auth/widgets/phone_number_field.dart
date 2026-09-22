@@ -29,15 +29,36 @@ class PhoneNumberField extends StatefulWidget {
 }
 
 class PhoneNumberFieldState extends State<PhoneNumberField> {
-  CountryCode _country = CountryCodes.getByCode('+20') ?? CountryCodes.countries.first;
+  CountryCode _country =
+      CountryCodes.getByCode('+20') ?? CountryCodes.countries.first;
 
-  /// The full international number in canonical E.164 form (digits only,
-  /// e.g. `+201001234567`). Spaces, dashes and parentheses the user typed
-  /// are stripped so the same number always stores, compares and sends to
-  /// the SMS service identically.
+  /// Strips the country-code prefix the user may have typed (e.g.
+  /// "201012345678" → "1012345678") so the same number always stores,
+  /// compares and sends to the SMS service identically, without doubling
+  /// the country code in [e164PhoneNumber].  Only strips when the
+  /// remaining digits fall inside the expected range for the selected
+  /// country, so short codes like +7 or +1 are handled safely.
+  String _digitsOnly() {
+    var digits = widget.controller.text.replaceAll(RegExp(r'\D'), '');
+    final countryCodeDigits = _country.code.substring(1); // "+20" → "20"
+    if (digits.startsWith(countryCodeDigits) &&
+        digits.length > countryCodeDigits.length) {
+      final stripped = digits.substring(countryCodeDigits.length);
+      final (min, max) = CountryCodes.phoneNumberLength(_country);
+      if (stripped.length >= min && stripped.length <= max) {
+        digits = stripped;
+      }
+    }
+    return digits;
+  }
+
+  /// The full international number in canonical E.164 form, e.g.
+  /// `+201012345678`.  Handles two common user-input styles:
+  ///
+  ///   1. `1012345678`  (clean national) → `+201012345678`
+  ///   2. `201012345678` (with country code) → strips 20 → `+201012345678`
   String get e164PhoneNumber {
-    final digits = widget.controller.text.replaceAll(RegExp(r'\D'), '');
-    return '${_country.code}$digits';
+    return '${_country.code}${_digitsOnly()}';
   }
 
   /// The currently selected country.
@@ -66,7 +87,7 @@ class PhoneNumberFieldState extends State<PhoneNumberField> {
     final invalidChars = number.replaceAll(RegExp(r'[0-9\-() ]'), '');
     if (invalidChars.isNotEmpty) return 'Please enter a valid phone number';
 
-    final digits = number.replaceAll(RegExp(r'\D'), '');
+    final digits = _digitsOnly();
     final (minDigits, maxDigits) = CountryCodes.phoneNumberLength(_country);
     if (digits.length < minDigits || digits.length > maxDigits) {
       if (minDigits == maxDigits) {
@@ -100,7 +121,7 @@ class PhoneNumberFieldState extends State<PhoneNumberField> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_country.flag, style: TextStyle(fontSize: 18.sp)),
+              CustomText(text: _country.flag, fontSize: 18.sp),
               SizedBox(width: 6.w),
               CustomText(
                 text: _country.code,

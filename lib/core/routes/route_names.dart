@@ -20,5 +20,4 @@ class RouteNames {
   static const String editGroupPage = '/editGroupPage';
   static const String editPagePage = '/editPagePage';
   static const String blockedUsersPage = '/blockedUsersPage';
-
 }

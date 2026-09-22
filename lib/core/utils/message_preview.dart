@@ -1,4 +1,4 @@
-import 'package:flash_chat_app/models/message_model.dart';
+import 'package:flash_chat_app/features/chat/models/message_model.dart';
 
 /// Builds a human-friendly preview label for the chat list.
 /// Media messages store their caption in [MessageModel.text], which is often

@@ -1,10 +1,38 @@
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
+
+/// Single source of truth for the live call status label, shared by the
+/// voice/video display areas AND the top bars so they never disagree.
+String callStatusText({
+  required bool isEngineReady,
+  required bool isJoined,
+  required bool isGroup,
+  required int remoteUsersCount,
+  required bool hadRemoteUser,
+}) {
+  if (!isEngineReady) return "Connecting...";
+  if (!isJoined) return "Joining channel...";
+  if (remoteUsersCount == 0) {
+    // Someone was in the call and all of them left: never fall back to a
+    // pulsing "Ringing..." (there is nobody to ring) and never pretend the
+    // call is still connecting.
+    if (hadRemoteUser) {
+      return isGroup
+          ? "Waiting for others…"
+          : "The other person left the call";
+    }
+    return "Ringing...";
+  }
+  if (isGroup) return "Connected ($remoteUsersCount participants)";
+  return "Connected";
+}
 
 class CallStatusDisplay extends StatelessWidget {
   final bool isEngineReady;
   final bool isJoined;
   final bool isGroup;
   final int remoteUsersCount;
+  final bool hadRemoteUser;
 
   const CallStatusDisplay({
     super.key,
@@ -12,27 +40,21 @@ class CallStatusDisplay extends StatelessWidget {
     required this.isJoined,
     required this.isGroup,
     required this.remoteUsersCount,
+    this.hadRemoteUser = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    String statusText;
-    bool isConnecting = false;
-
-    if (!isEngineReady) {
-      statusText = "Connecting...";
-      isConnecting = true;
-    } else if (!isJoined) {
-      statusText = "Joining channel...";
-      isConnecting = true;
-    } else if (remoteUsersCount == 0) {
-      statusText = "Ringing...";
-      isConnecting = true;
-    } else if (isGroup) {
-      statusText = "Connected ($remoteUsersCount participants)";
-    } else {
-      statusText = "Connected";
-    }
+    final statusText = callStatusText(
+      isEngineReady: isEngineReady,
+      isJoined: isJoined,
+      isGroup: isGroup,
+      remoteUsersCount: remoteUsersCount,
+      hadRemoteUser: hadRemoteUser,
+    );
+    final isConnecting = statusText == "Connecting..." ||
+        statusText == "Joining channel..." ||
+        statusText == "Ringing...";
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -68,13 +90,11 @@ class CallStatusDisplay extends StatelessWidget {
             ),
             const SizedBox(width: 8),
           ],
-          Text(
-            statusText,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+          CustomText(
+            text: statusText,
+            textColor: Colors.white70,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
         ],
       ),

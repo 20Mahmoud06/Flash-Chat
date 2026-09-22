@@ -1,4 +1,6 @@
-﻿import 'dart:io';
+import 'dart:io';
+import 'package:flash_chat_app/core/constants/app_colors.dart';
+import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:gal/gal.dart';
@@ -16,12 +18,10 @@ Future<void> saveImageToGallery(BuildContext context, String url) async {
     }
     if (!await _ensureAccess()) return;
     await Gal.putImageBytes(response.bodyBytes);
-    _showSnackbar(messenger,
-        message: 'Photo saved to gallery', success: true);
+    _showSnackbar(messenger, message: 'Photo saved to gallery', success: true);
   } catch (e) {
     debugPrint('Save image error: $e');
-    _showSnackbar(messenger,
-        message: 'Could not save photo', success: false);
+    _showSnackbar(messenger, message: 'Could not save photo', success: false);
   }
 }
 
@@ -42,12 +42,10 @@ Future<void> saveVideoToGallery(BuildContext context, String url) async {
     await streamed.stream.pipe(sink);
     await sink.close();
     await Gal.putVideo(file.path);
-    _showSnackbar(messenger,
-        message: 'Video saved to gallery', success: true);
+    _showSnackbar(messenger, message: 'Video saved to gallery', success: true);
   } catch (e) {
     debugPrint('Save video error: $e');
-    _showSnackbar(messenger,
-        message: 'Could not save video', success: false);
+    _showSnackbar(messenger, message: 'Could not save video', success: false);
   }
 }
 
@@ -70,12 +68,12 @@ void _showSnackbar(ScaffoldMessengerState messenger,
                 ? const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Colors.lightBlueAccent, Color(0xFF0288D1)],
+                    colors: [Colors.lightBlueAccent, AppColors.primaryDark],
                   )
                 : const LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFEF5350), Color(0xFFB71C1C)],
+                    colors: [AppColors.errorRed, AppColors.errorRedDark],
                   ),
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
@@ -98,13 +96,11 @@ void _showSnackbar(ScaffoldMessengerState messenger,
               ),
               const SizedBox(width: 10),
               Flexible(
-                child: Text(
-                  message,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: CustomText(
+                  text: message,
+                  textColor: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],

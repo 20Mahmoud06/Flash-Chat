@@ -1,9 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-
-import '../../models/group_model.dart';
-import '../../models/user_model.dart';
+import '../../features/groups/models/group_model.dart';
+import '../../features/profile/models/user_model.dart';
 
 String buildOneOnOneChatId(String uid1, String uid2) {
   final ids = [uid1, uid2]..sort();
@@ -62,4 +61,3 @@ Future<void> applyCallerNickname(Map<String, dynamic> payload) async {
     debugPrint('Error resolving caller nickname: $e');
   }
 }
-

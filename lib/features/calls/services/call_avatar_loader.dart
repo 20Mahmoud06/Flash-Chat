@@ -33,6 +33,8 @@ class CallAvatarLoader {
   }
 
   /// Fetches every group member and maps their Agora UID to display info.
+  /// User documents are read in parallel so group calls with many members
+  /// load avatars quickly. A single failing read no longer drops all data.
   static Future<Map<int, CallParticipantInfo>> loadGroupParticipants(
       String groupId) async {
     final result = <int, CallParticipantInfo>{};
@@ -44,18 +46,28 @@ class CallAvatarLoader {
       final memberUids = List<String>.from(
           groupDoc.data()?['memberUids'] ?? const []);
 
+      if (memberUids.isEmpty) return result;
+
+      final futures = <Future<DocumentSnapshot<Map<String, dynamic>>>>[];
       for (final uid in memberUids) {
-        final doc = await FirebaseFirestore.instance
+        futures.add(FirebaseFirestore.instance
             .collection('users')
             .doc(uid)
-            .get();
-        final data = doc.data() ?? {};
-        final firstName = data['firstName'] as String? ?? '';
-        final lastName = data['lastName'] as String? ?? '';
+            .get()
+            .catchError((_) => <String, dynamic>{} as DocumentSnapshot<Map<String, dynamic>>));
+      }
+
+      final docs = await Future.wait(futures);
+
+      for (var i = 0; i < memberUids.length; i++) {
+        final uid = memberUids[i];
+        final data = docs[i].data();
+        final firstName = data?['firstName'] as String? ?? '';
+        final lastName = data?['lastName'] as String? ?? '';
         final name = '$firstName $lastName'.trim();
         result[uid.hashCode & 0x7fffffff] = CallParticipantInfo(
           name: name.isEmpty ? 'Member' : name,
-          avatarEmoji: data['avatarEmoji'] as String? ?? _defaultAvatar,
+          avatarEmoji: data?['avatarEmoji'] as String? ?? _defaultAvatar,
         );
       }
     } catch (e) {

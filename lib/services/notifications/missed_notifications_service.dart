@@ -4,12 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flash_chat_app/core/utils/message_preview.dart';
 import 'package:flash_chat_app/core/utils/notification_ids.dart';
-import 'package:flash_chat_app/models/message_model.dart';
+import 'package:flash_chat_app/features/chat/models/message_model.dart';
 import 'package:flash_chat_app/services/block/block_service.dart';
-import 'package:flash_chat_app/services/chat/active_chat.dart';
+import 'package:flash_chat_app/features/chat/services/active_chat.dart';
 import 'package:flash_chat_app/services/connectivity/connectivity_service.dart';
 import 'package:flash_chat_app/services/fcm/fcm_service.dart';
-import 'package:flash_chat_app/services/mute/mute_service.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,7 +21,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// notifications for the ones that:
 ///   * are not from the current user,
 ///   * are not from the currently-open chat / group,
-///   * are from a conversation the user has not muted and is not blocked.
+///   * are from a conversation the user has not blocked.
 ///
 /// A per-conversation "last handled message timestamp" is kept in
 /// SharedPreferences. Each time a message is handled here (or shown by the
@@ -35,8 +34,13 @@ class MissedNotificationsService {
   static final MissedNotificationsService instance =
       MissedNotificationsService._();
 
-  static const String _prefsPrefix = 'missed_notif_ts';
+  static const String _prefsPrefix = missedNotificationsPrefsPrefix;
   static const Duration _startDelay = Duration(milliseconds: 3500);
+
+  /// How long the backfill keeps redriving while FirebaseAuth is still
+  /// restoring the session on a cold start (see [triggerBackfill]).
+  static const Duration _authRetryDelay = Duration(seconds: 1);
+  static const int _maxAuthRetries = 10;
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -46,6 +50,14 @@ class MissedNotificationsService {
   bool _initialized = false;
   bool _running = false;
   bool _wasOnline = false;
+  int _authRetries = 0;
+
+  /// True once ANY signed-in user event fired for this process. The re-arm
+  /// below must only run for the FIRST one (a cold start / app-update launch,
+  /// where the session restores asynchronously) — a mid-process re-login must
+  /// NOT re-notify: that would blast a burst of "your account" notifications
+  /// + sounds right at every log in.
+  bool _signedInOnce = false;
 
   /// Amount of chat/group messages to inspect per conversation on a backfill.
   static const int _perConversationLimit = 15;
@@ -58,8 +70,10 @@ class MissedNotificationsService {
   bool _isRecentlyMissed(DateTime timestamp) =>
       DateTime.now().difference(timestamp) <= _recentWindow;
 
-  String _key(String peerId, {required bool isGroup}) =>
-      '$_prefsPrefix:${isGroup ? 'group' : 'chat'}:$peerId';
+  String _key(String peerId, {required bool isGroup}) => missedNotificationPrefKey(
+        peerId,
+        isGroup: isGroup,
+      );
 
   /// Loads persisted state and wires the offline->online listener that
   /// triggers a backfill whenever connectivity is restored. Safe to call once
@@ -81,6 +95,20 @@ class MissedNotificationsService {
     _wasOnline = ConnectivityService.instance.isConnected.value;
     ConnectivityService.instance.isConnected
         .addListener(_onConnectivityChanged);
+
+    // A cold start can outpace FirebaseAuth's async session restore. Re-arm
+    // the backfill the moment a user is back so the FIRST launch after an app
+    // update still backfills messages that arrived while the app was closed —
+    // instead of only working from the second launch onward.
+    _auth.authStateChanges().listen((user) {
+      _authRetries = 0;
+      if (user == null) return;
+      if (_signedInOnce) return;
+      _signedInOnce = true;
+      if (ConnectivityService.instance.isConnected.value) {
+        _scheduleBackfill();
+      }
+    });
 
     // Cold start while already online: backfill any messages that arrived
     // while the app was killed / offline.
@@ -108,7 +136,8 @@ class MissedNotificationsService {
   Timer? _backfillTimer;
 
   void dispose() {
-    ConnectivityService.instance.isConnected.removeListener(_onConnectivityChanged);
+    ConnectivityService.instance.isConnected
+        .removeListener(_onConnectivityChanged);
     _backfillTimer?.cancel();
     _backfillTimer = null;
   }
@@ -144,7 +173,23 @@ class MissedNotificationsService {
   /// message not currently being viewed. Safe to call repeatedly.
   Future<void> triggerBackfill() async {
     final myUid = _auth.currentUser?.uid;
-    if (myUid == null || !ConnectivityService.instance.isConnected.value) {
+    if (myUid == null) {
+      // FirebaseAuth restores the persisted session asynchronously on a cold
+      // start; racing it here would silently drop the whole backfill for this
+      // launch (the "missed notifications only work after I reopen the app"
+      // bug). Redrive briefly instead of bailing for good.
+      if (_authRetries < _maxAuthRetries &&
+          ConnectivityService.instance.isConnected.value) {
+        _authRetries++;
+        _backfillTimer?.cancel();
+        _backfillTimer = Timer(_authRetryDelay, () {
+          _backfillTimer = null;
+          triggerBackfill();
+        });
+      }
+      return;
+    }
+    if (!ConnectivityService.instance.isConnected.value) {
       return;
     }
     if (_running) return;
@@ -192,6 +237,7 @@ class MissedNotificationsService {
         lastTs: lastHandled(peerId, isGroup: false),
         limit: _perConversationLimit,
       );
+
       if (missed.isEmpty) continue;
 
       // Never notify the conversation the user is currently reading.
@@ -199,8 +245,8 @@ class MissedNotificationsService {
         await _advanceFromMessage(peerId, missed.first, isGroup: false);
         continue;
       }
-      // Respect per-contact muting and blocking.
-      if (await _shouldSkip(peerId, senderId: missed.first.senderId)) {
+      // Respect blocking.
+      if (await _shouldSkip(missed.first.senderId)) {
         await _advanceFromMessage(peerId, missed.first, isGroup: false);
         continue;
       }
@@ -247,8 +293,9 @@ class MissedNotificationsService {
 
       final groupId = group.id;
       final rawName = data['name'] as String?;
-      final groupName =
-          (rawName != null && rawName.isNotEmpty) ? rawName : 'New Group Message';
+      final groupName = (rawName != null && rawName.isNotEmpty)
+          ? rawName
+          : 'New Group Message';
 
       final hadBaseline = lastHandled(groupId, isGroup: true) > 0;
       final missed = await _missedMessages(
@@ -258,6 +305,7 @@ class MissedNotificationsService {
         lastTs: lastHandled(groupId, isGroup: true),
         limit: _perConversationLimit,
       );
+
       if (missed.isEmpty) continue;
 
       // Never notify the group the user is currently reading.
@@ -265,8 +313,12 @@ class MissedNotificationsService {
         await _advanceFromMessage(groupId, missed.first, isGroup: true);
         continue;
       }
-      // Respect per-contact muting and blocking (own mutedChats keyed by uid).
-      if (await _shouldSkip(null, senderId: missed.first.senderId)) {
+      // Respect blocking. A blocked 1-to-1 contact must NOT silence their
+      // messages in the groups they're a member of, so the per-sender chat
+      // block is deliberately not consulted here.
+      final senderId = missed.first.senderId;
+      if (senderId.isNotEmpty &&
+          await BlockService.isEitherBlocked(senderId)) {
         await _advanceFromMessage(groupId, missed.first, isGroup: true);
         continue;
       }
@@ -297,8 +349,8 @@ class MissedNotificationsService {
     }
   }
 
-  /// Returns the messages sent by someone else after [lastTs], newest first
-  /// (excluding my own and deleted messages).
+  /// Returns messages that are genuinely backfill-notifyable (sent by someone
+  /// else, not deleted) and newer than the stored watermark.
   Future<List<MessageModel>> _missedMessages({
     required String collectionPath,
     required String chatId,
@@ -319,30 +371,21 @@ class MissedNotificationsService {
     }
 
     final snapshot = await query.get();
-    final result = <MessageModel>[];
+    final missed = <MessageModel>[];
     for (final doc in snapshot.docs) {
       final message = MessageModel.fromFirestore(doc);
-      if (message.senderId == myUid) continue;
       if (message.isDeleted) continue;
-      result.add(message);
+      if (message.senderId == myUid) continue;
+      missed.add(message);
     }
-    return result;
+    return missed;
   }
 
-  /// Whether a conversation should be skipped because the peer is muted or
-  /// either side blocked the other. When [peerUid] is null only the sender of
-  /// a group message is checked (a group member cannot block the whole group,
-  /// but they can mute a specific member by uid).
-  Future<bool> _shouldSkip(String? peerUid, {required String senderId}) async {
+  /// Whether a 1-to-1 conversation should be skipped because either side
+  /// blocked the other.
+  Future<bool> _shouldSkip(String senderId) async {
     try {
-      if (peerUid != null && await MuteService.isMuted(peerUid)) {
-        return true;
-      }
-      if (senderId.isNotEmpty && await MuteService.isMuted(senderId)) {
-        return true;
-      }
-      if (senderId.isNotEmpty &&
-          await BlockService.isEitherBlocked(senderId)) {
+      if (senderId.isNotEmpty && await BlockService.isEitherBlocked(senderId)) {
         return true;
       }
     } catch (e) {
@@ -352,9 +395,9 @@ class MissedNotificationsService {
   }
 
   /// Advances the stored handled timestamp for a conversation to the message's
-  /// timestamp without notifying (e.g. active chat or muted).
-  Future<void> _advanceFromMessage(
-      String peerId, MessageModel message, {required bool isGroup}) {
+  /// timestamp without notifying (e.g. active chat or blocked).
+  Future<void> _advanceFromMessage(String peerId, MessageModel message,
+      {required bool isGroup}) {
     return recordHandled(peerId,
         isGroup: isGroup, timestamp: message.timestamp.toDate());
   }

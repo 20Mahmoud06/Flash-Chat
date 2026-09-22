@@ -3,21 +3,24 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import '../../../models/group_model.dart';
-import '../../../models/user_model.dart';
-import '../../../models/message_model.dart';
-import '../../../core/utils/callkit_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../groups/models/group_model.dart';
+import '../../profile/models/user_model.dart';
+import '../../chat/models/message_model.dart';
+import 'callkit_helper.dart';
 import '../../../services/block/block_service.dart';
 import '../../../services/fcm/fcm_v1_sender.dart';
+import '../../../services/fcm/fcm_service.dart';
 import '../../../services/hms/hms_v1_sender.dart';
 import '../../../services/presence/presence_service.dart';
 import '../../../core/routes/navigation_service.dart';
 import '../../../core/routes/route_names.dart';
 import '../../../core/utils/call_utils.dart';
-import '../../../models/call_arguments.dart';
-import '../cubit/call_cubit.dart';
+import '../models/call_arguments.dart';
+import '../bloc/call_bloc.dart';
 
 class CallService {
   static final _firestore = FirebaseFirestore.instance;
@@ -30,6 +33,85 @@ class CallService {
   /// navigate to the same call.
   static final Set<String> _handledAcceptedCallIds = {};
 
+  /// Call ids that the user already declined / ended / timed-out locally.
+  /// Prevents the Firestore snapshot listener from re-showing the CallKit
+  /// incoming-call screen for a call whose status update is still in flight
+  /// (or failed in release mode due to permission / minification issues).
+  static final Set<String> _handledDeclinedCallIds = {};
+
+  /// Persisted copy of the handled ids, so a cold start / app reopen can never
+  /// re-ring a `ringing` doc it already presented or resolved. Shared with the
+  /// native FCM/HMS services through the `flash_chat/call_guard` bridge: both
+  /// sides write and read the same ids, so a re-delivered push is muted too.
+  static const String _handledCallsPrefsKey = 'handled_call_ids';
+  static const MethodChannel _callGuardChannel =
+      MethodChannel('flash_chat/call_guard');
+  static SharedPreferences? _prefs;
+  static Future<void>? _guardLoadFuture;
+  static final Set<String> _persistedHandledCallIds = {};
+
+  static Future<void> _guardLoaded() =>
+      _guardLoadFuture ??= _loadPersistedGuard();
+
+  static Future<void> _loadPersistedGuard() async {
+    try {
+      _prefs ??= await SharedPreferences.getInstance();
+      final saved = _prefs!.getStringList(_handledCallsPrefsKey) ?? const [];
+      if (saved.isNotEmpty) {
+        _persistedHandledCallIds.addAll(saved);
+        _handledDeclinedCallIds.addAll(saved);
+      }
+      // Merge ids the native FCM/HMS services already handled (native ring
+      // shown, timed out to no_answer, or Dart-marked through the bridge) so a
+      // cold-start Firestore re-fire of the same `ringing` doc is suppressed
+      // on the very first snapshot.
+      final nativeHandled = await _readNativeHandled();
+      if (nativeHandled != null) {
+        _handledDeclinedCallIds.addAll(nativeHandled);
+      }
+    } catch (e) {
+      debugPrint('Failed to load persisted handled call ids: $e');
+    }
+  }
+
+  static Future<List<String>?> _readNativeHandled() async {
+    try {
+      final result =
+          await _callGuardChannel.invokeMethod<List<dynamic>>('getHandled');
+      if (result == null) return null;
+      return result.cast<String>();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _persistHandled(String callId) async {
+    await _guardLoaded();
+    _persistedHandledCallIds.add(callId);
+    try {
+      await _prefs!
+          .setStringList(_handledCallsPrefsKey, _persistedHandledCallIds.toList());
+    } catch (e) {
+      debugPrint('Failed to persist handled call id: $e');
+    }
+    try {
+      await _callGuardChannel.invokeMethod<void>('markHandled', callId);
+    } catch (_) {
+      // Native engine not attached yet (cold start): fine, the local prefs
+      // copy has it, and native persists its own ids on its own rings.
+    }
+  }
+
+  /// Marks a call as locally handled so the incoming-call listener will
+  /// never re-ring for it.  Must be called BEFORE the Firestore write so
+  /// the UI stays closed even if the write fails.  Persisted across app
+  /// restarts (and mirrored to the native services) so a stale `ringing`
+  /// doc can never ring again on a later app open.
+  static void markCallHandled(String callId) {
+    _handledDeclinedCallIds.add(callId);
+    unawaited(_persistHandled(callId));
+  }
+
   static bool claimAcceptedCall(String callId) {
     if (_handledAcceptedCallIds.contains(callId)) return false;
     _handledAcceptedCallIds.add(callId);
@@ -41,6 +123,8 @@ class CallService {
   // ===============================
   static void listenForIncomingCalls() {
 
+    unawaited(_guardLoaded());
+
     _auth.authStateChanges().listen((user) {
       if (user == null) return;
 
@@ -48,9 +132,15 @@ class CallService {
 
       _callSub = _firestore
           .collection('calls')
+          .where('memberUids', arrayContains: user.uid)
           .where('status', isEqualTo: 'ringing')
           .snapshots()
           .listen((snapshot) async {
+
+        // The handled-guard is loaded from SharedPreferences (and merged from
+        // native) before the first snapshot is processed, so a previously
+        // handled stale `ringing` doc is never alarmed again on app open.
+        await _guardLoaded();
 
         for (final change in snapshot.docChanges) {
           if (change.type != DocumentChangeType.added) continue;
@@ -58,13 +148,35 @@ class CallService {
           final data = change.doc.data();
           if (data == null) continue;
 
+          final createdAt = data['createdAt'];
+          final isStale = createdAt is Timestamp &&
+              DateTime.now().difference(createdAt.toDate()) >
+                  CallBloc.ringTimeout + const Duration(seconds: 15);
+
+          final callId = data['callId'] as String?;
+          final isGroup = data['isGroup'] == true;
+
           /// ❌ NEVER show CallKit for your own call
           if (data['callerId'] == user.uid) continue;
 
-          final isGroup = data['isGroup'] == true;
-
           /// 1-to-1: only receiver sees it
           if (!isGroup && data['receiverId'] != user.uid) continue;
+
+          /// Skip calls the user already declined / ended / timed-out
+          /// locally.  This prevents the infinite ringing loop that occurs
+          /// when the Firestore hangup write fails in release mode but the
+          /// snapshot listener keeps re-firing.
+          ///
+          /// Stale 1-to-1 docs are exempt: an already-handled stale `ringing`
+          /// doc (a native ring was shown before the app was killed/closed)
+          /// must STILL reach the orphan resolver below so it is flipped
+          /// terminal — skipping it here would leave it ringing forever.
+          final isStale1to1 = !isGroup && isStale;
+          if (callId != null &&
+              _handledDeclinedCallIds.contains(callId) &&
+              !isStale1to1) {
+            continue;
+          }
 
           /// 🚫 Never show a call from/to a blocked user (1-to-1)
           if (!isGroup && data['callerId'] is String) {
@@ -73,6 +185,21 @@ class CallService {
               debugPrint('Blocking call from blocked user: $callerId');
               continue;
             }
+          }
+
+          /// A `ringing` call older than the ring window is an orphan: the
+          /// caller was killed / closed the app while it was still ringing,
+          /// so the doc never reached a terminal status. The first snapshot
+          /// of a fresh listener reports every matching doc as `added`, which
+          /// made these orphaned calls ring again on EVERY app open (and look
+          /// like an ongoing call). Never present a stale ring: flip the doc
+          /// terminal once (silently if it was already handled) and surface
+          /// ONE missed-call notification.
+          if (isStale1to1) {
+            if (callId != null) {
+              await _resolveOrphanedCall(callId, data);
+            }
+            continue;
           }
 
           /// Group: only members see it
@@ -92,6 +219,14 @@ class CallService {
               // Permission denied for non-members (Firestore rules) or any
               // other failure — never ring for groups the user is not in.
               debugPrint('Group membership check failed for $user.uid: $e');
+              continue;
+            }
+
+            // Skip stale/orphaned group rings without presenting them (the
+            // 1:1 orphan above is terminal-flipped; group orphan/join-card
+            // logic lives in GroupCallTracker).
+            if (isStale) {
+              debugPrint('Skipping stale ringing group call: ${change.doc.id}');
               continue;
             }
           }
@@ -140,6 +275,10 @@ class CallService {
               avatar: data['callerAvatar']?.toString(),
             );
             setRingCleanupTimer(data['callId']);
+            // Persisted guard: if the app is killed/force-closed while this
+            // ring is up, a reopen must not re-ring the same still-`ringing`
+            // doc (the orphan resolver above flips it once it is stale).
+            markCallHandled(data['callId']);
           }
 
           addCallStatusListener(data['callId']);
@@ -154,11 +293,46 @@ class CallService {
     });
   }
 
+  /// Resolves an orphaned (stale, still-`ringing`) 1-to-1 call that will never
+  /// reach a terminal status on its own: flips the doc to `no_answer` once
+  /// (only the first device/session wins the write) and surfaces it as a
+  /// SINGLE missed-call notification. Never rings. Subsequent app opens find
+  /// the id already handled and stay silent (and the doc is no longer
+  /// `ringing`, so the listener never sees it again).
+  static Future<void> _resolveOrphanedCall(
+    String callId,
+    Map<String, dynamic> data,
+  ) async {
+    final alreadyHandled = _handledDeclinedCallIds.contains(callId);
+    markCallHandled(callId);
+    try {
+      final ref = _firestore.collection('calls').doc(callId);
+      final doc = await ref.get();
+      if ((doc.data()?['status'] as String?) == 'ringing') {
+        await ref.update({
+          'status': 'no_answer',
+          'missedAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('Resolved orphaned ringing call as no_answer: $callId');
+      }
+    } catch (e) {
+      debugPrint('Failed to resolve orphaned call $callId: $e');
+    }
+    if (alreadyHandled) return;
+    await FcmService.showMissedCallNotification(
+      callId: callId,
+      callerName: data['callerName']?.toString() ?? 'Unknown',
+      isVideo: data['isVideo'] == true,
+      callerId: data['callerId']?.toString(),
+    );
+  }
+
   /// Finds a call that was accepted in the last couple of minutes but whose
   /// accept event was never handled (app was killed). Joins and opens it.
   ///
-  /// Uses a single-field query (auto-indexed) and filters in Dart to avoid
-  /// requiring new composite indexes in the Firestore console.
+  /// Uses `memberUids array-contains uid` so the query statically matches the
+  /// `calls` read rule (the rule is field-only), plus a status equality.
+  /// (Needs composite index: memberUids, status.)
   ///
   /// Retries over a short window: on a cold boot the native accept decision is
   /// persisted by [CallDecisionReceiver], which first waits for the restored
@@ -187,6 +361,7 @@ class CallService {
 
       final snapshot = await _firestore
           .collection('calls')
+          .where('memberUids', arrayContains: uid)
           .where('status', isEqualTo: 'accepted')
           .limit(30)
           .get();
@@ -307,6 +482,11 @@ class CallService {
       // active-calls list forever, making every later incoming call be
       // declined as "busy" (the list "any other ring = busy" check).
       if (status != null && _terminalCallStatuses.contains(status)) {
+        // Mark handled locally (and persist it) so the incoming-call
+        // listener never re-presents this call's CallKit ring — even if the
+        // snapshot re-fires before the listener is cancelled below, or the
+        // app is killed and reopened while the doc still says `ringing`.
+        markCallHandled(callId);
         await FlutterCallkitIncoming.endCall(callId);
         _activeCallListeners[callId]?.cancel();
         _activeCallListeners.remove(callId);
@@ -329,7 +509,7 @@ class CallService {
   static void setRingCleanupTimer(String callId) {
     _ringCleanupTimers.remove(callId)?.cancel();
     _ringCleanupTimers[callId] =
-        Timer(CallCubit.ringTimeout + const Duration(seconds: 15), () async {
+        Timer(CallBloc.ringTimeout + const Duration(seconds: 15), () async {
       _ringCleanupTimers.remove(callId);
       try {
         final doc = await _firestore.collection('calls').doc(callId).get();
@@ -390,6 +570,18 @@ class CallService {
     final callerAvatar = callerDoc.data()?['avatarEmoji'] ?? '👤';
     final receiverAvatar = receiver?.avatarEmoji ?? '👤';
 
+    // Who may read/update this call. Written here (a snapshot at start time)
+    // so the Firestore read rule stays FIELD-ONLY — collection queries filter
+    // with `memberUids array-contains uid` and stay statically valid.
+    final List<String> callMemberUids;
+    if (isGroupCall) {
+      final groupDoc =
+          await _firestore.collection('groups').doc(group.id).get();
+      callMemberUids = List<String>.from(groupDoc.data()?['memberUids'] ?? []);
+    } else {
+      callMemberUids = [caller.uid, receiver!.uid];
+    }
+
     await callDoc.set({
       'callId': callId,
       'callerId': caller.uid,
@@ -401,6 +593,7 @@ class CallService {
       'status': 'ringing',
       'createdAt': FieldValue.serverTimestamp(),
       'participants': [caller.uid],
+      'memberUids': callMemberUids,
 
       if (!isGroupCall) 'receiverId': receiver!.uid,
       if (!isGroupCall) 'receiverAvatar': receiverAvatar,
@@ -474,8 +667,7 @@ class CallService {
       }
     } else {
       // Group call FCM to all members except caller
-      final groupDoc = await _firestore.collection('groups').doc(group.id).get();
-      final memberUids = List<String>.from(groupDoc['memberUids'] ?? []);
+      final memberUids = callMemberUids;
 
       // Mark members who are currently offline as "offline" on the call doc so
       // the group call history can show how many members never saw the call.
@@ -494,7 +686,7 @@ class CallService {
 
       // Write a WhatsApp-style "Join call" card into the group chat so any
       // member who opens the chat late sees the in-progress call and can tap
-      // to join. Deleted when the call ends (see CallCubit.endCall).
+      // to join. Deleted when the call ends (see CallBloc.endCall).
       try {
         await _firestore.collection('groups').doc(group.id).collection('messages').add({
           'senderId': caller.uid,
@@ -504,6 +696,9 @@ class CallService {
           'timestamp': FieldValue.serverTimestamp(),
           'status': 'sent',
           'reactions': {},
+          'starredBy': [],
+          'deletedForMe': [],
+          'imageReactions': {},
           'isDeleted': false,
           'isEdited': false,
           'messageType': MessageType.callActive.name,
@@ -578,7 +773,11 @@ class CallService {
   }
 
   static Future<String?> getActiveCallId(String channelName, bool isVideo) async {
+    final myUid = _auth.currentUser?.uid;
+    if (myUid == null) return null;
+
     final query = _firestore.collection('calls')
+        .where('memberUids', arrayContains: myUid)
         .where('channelName', isEqualTo: channelName)
         .where('isVideo', isEqualTo: isVideo)
         .where('status', whereIn: ['ringing', 'accepted'])
@@ -605,7 +804,7 @@ class CallService {
   /// with a live engine). When the app is killed there is no ongoing call, so
   /// the native service simply rings.
   static Future<bool> isUserBusy({String? excludingCallId}) async {
-    if (CallCubit.instance.isCallActive) return true;
+    if (CallBloc.instance.isCallActive) return true;
 
     // Fall back to platform-level active calls (e.g. recovered on cold start).
     // Only calls that were actually ACCEPTED (a real ongoing conversation)
@@ -660,23 +859,46 @@ class CallService {
       String callId,
       String status,
       ) async {
-    await _firestore.collection('calls').doc(callId).update({
-      'status': status,
-    });
+    try {
+      await _firestore.collection('calls').doc(callId).update({
+        'status': status,
+      });
+    } catch (e) {
+      debugPrint('Failed to update call status to $status for $callId: $e');
+    }
 
     if (status == 'ended') {
-      final activeCalls = await FlutterCallkitIncoming.activeCalls();
-      if (activeCalls.any((c) => c['id'] == callId)) {
-        await FlutterCallkitIncoming.endCall(callId);
+      try {
+        final activeCalls = await FlutterCallkitIncoming.activeCalls();
+        if (activeCalls.any((c) => c['id'] == callId)) {
+          await FlutterCallkitIncoming.endCall(callId);
+        }
+      } catch (e) {
+        debugPrint('Failed to end CallKit call $callId: $e');
       }
     }
 
   }
 
   static Future<void> joinCall(String callId, String userId) async {
-    await _firestore.collection('calls').doc(callId).update({
+    final ref = _firestore.collection('calls').doc(callId);
+    await ref.update({
       'participants': FieldValue.arrayUnion([userId]),
     });
+
+    // Once anyone joins an existing ring the call is live. Flipping it to
+    // `accepted` (only while it is still ringing/accepted) means the
+    // incoming-call listener — which matches `status == 'ringing'` — stops
+    // re-ringing every other member on each app open / chat open.
+    try {
+      final snap = await ref.get();
+      final status = snap.data()?['status'];
+      if (status == 'ringing' || status == 'accepted') {
+        await ref.update({'status': 'accepted'});
+      }
+    } catch (e) {
+      debugPrint('Failed to flip joined call to accepted: $e');
+    }
     debugPrint('Joined call: $callId as $userId');
   }
 

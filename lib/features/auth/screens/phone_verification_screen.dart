@@ -1,20 +1,21 @@
 import 'dart:async';
-
 import 'package:flash_chat_app/core/theme/app_theme.dart';
 import 'package:flash_chat_app/core/utils/page_transition.dart';
 import 'package:flash_chat_app/features/auth/cubit/auth_cubit.dart';
-import 'package:flash_chat_app/features/chat/screens/home_screen.dart';
+import 'package:flash_chat_app/features/auth/widgets/otp_verification_header.dart';
+import 'package:flash_chat_app/features/auth/widgets/resend_section.dart';
+import 'package:flash_chat_app/features/home/screens/home_screen.dart';
 import 'package:flash_chat_app/features/profile/cubit/profile_cubit.dart';
 import 'package:flash_chat_app/features/profile/cubit/profile_state.dart';
-import 'package:flash_chat_app/models/phone_verification_arguments.dart';
+import 'package:flash_chat_app/features/auth/models/phone_verification_arguments.dart';
 import 'package:flash_chat_app/services/otp/otp_service.dart';
-import 'package:flash_chat_app/services/auth/pending_signup_service.dart';
+import 'package:flash_chat_app/features/auth/services/pending_signup_service.dart';
 import 'package:flash_chat_app/shared/widgets/custom_button.dart';
 import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:pinput/pinput.dart';
+import 'package:otp_animated_fields/otp_animated_fields.dart';
 import 'package:quickalert/quickalert.dart';
 
 class PhoneVerificationScreen extends StatefulWidget {
@@ -23,14 +24,14 @@ class PhoneVerificationScreen extends StatefulWidget {
   const PhoneVerificationScreen({super.key, required this.arguments});
 
   @override
-  State<PhoneVerificationScreen> createState() => _PhoneVerificationScreenState();
+  State<PhoneVerificationScreen> createState() =>
+      _PhoneVerificationScreenState();
 }
 
 class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
-  static const int _resendCooldownSeconds = 30;
   static const int _maxResends = 3;
 
-  final TextEditingController _otpController = TextEditingController();
+  final OtpAnimatedController _otpController = OtpAnimatedController();
   final FocusNode _otpFocusNode = FocusNode();
   final OtpService _otpService = OtpService();
 
@@ -39,7 +40,12 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
   late String _otpId;
 
   Timer? _countdownTimer;
-  int _countdown = _resendCooldownSeconds;
+
+  /// Resend countdown state is restored from the Firestore OTP document (see
+  /// [OtpSessionStatus]) so it survives widget rebuilds, leaving/re-entering
+  /// the screen, app backgrounding and app restarts.
+  DateTime? _nextResendAt;
+  int _countdown = 0;
   int _resendCount = 0;
 
   bool _isVerifying = false;
@@ -54,7 +60,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _otpFocusNode.requestFocus();
     });
-    _startCountdown();
+    _loadOtpState();
   }
 
   @override
@@ -65,19 +71,48 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     super.dispose();
   }
 
+  /// Reloads the stored session (resend count + cooldown) from Firestore and
+  /// resumes the countdown from the stored timestamp instead of restarting a
+  /// fresh timer. Falls back to a fresh countdown if the state cannot load.
+  Future<void> _loadOtpState() async {
+    try {
+      final status = await _otpService.getOtpStatus(otpId: _otpId);
+      if (!mounted) return;
+      setState(() {
+        _nextResendAt = status.nextResendAt;
+        _resendCount = status.resendCount;
+        _countdown = status.secondsUntilNextResend;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _nextResendAt = null;
+        _resendCount = 0;
+        _countdown = 0;
+      });
+    } finally {
+      if (mounted) {
+        _startCountdown();
+      }
+    }
+  }
+
   void _startCountdown() {
     _countdownTimer?.cancel();
-    setState(() => _countdown = _resendCooldownSeconds);
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) {
         timer.cancel();
         return;
       }
-      if (_countdown <= 1) {
+      final next = _nextResendAt;
+      final remaining = next == null
+          ? 0
+          : next.difference(DateTime.now()).inSeconds;
+      if (remaining <= 0) {
         timer.cancel();
         setState(() => _countdown = 0);
       } else {
-        setState(() => _countdown -= 1);
+        setState(() => _countdown = remaining);
       }
     });
   }
@@ -101,6 +136,9 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       _errorText = null;
     });
 
+    // Move the boxes into the orbit while verification runs.
+    _otpController.verify();
+
     try {
       final verified = await _otpService.verifyOtp(
         otpId: _otpId,
@@ -109,52 +147,41 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
       if (!mounted) return;
 
       if (!verified) {
+        if (_isVerifying) {
+          setState(() => _isVerifying = false);
+        }
         setState(() {
-          _isVerifying = false;
           _showError = true;
           _errorText = 'Invalid code. Please check the code and try again.';
         });
-        _otpController.clear();
-        _otpFocusNode.requestFocus();
-        _showWrongCodeMessage();
+        _otpController.fail();
         return;
       }
 
+      // Code was correct: collapse the boxes into the success check mark.
+      _otpController.succeed();
+
       await _completeProfile();
 
-      // Stop the spinner once profile completion has resolved (whether it
-      // succeeded or the cubit emitted an error). Success/navigation is driven
-      // by the BlocConsumer listener.
+      // Success/navigation is driven by the BlocConsumer listener.
       if (mounted && _isVerifying) {
         setState(() => _isVerifying = false);
       }
     } catch (e) {
       if (!mounted) return;
+      if (_isVerifying) {
+        setState(() => _isVerifying = false);
+      }
       setState(() {
-        _isVerifying = false;
         _showError = true;
         _errorText = OtpService.otpErrorMessage(e);
       });
+      _otpController.fail();
     }
   }
 
-  /// Shows a QuickAlert (same package used for resend) when the entered code
-  /// does not match. Keeps the existing inline pinput error too.
-  void _showWrongCodeMessage() {
-    QuickAlert.show(
-      context: context,
-      type: QuickAlertType.error,
-      title: 'Incorrect Code',
-      text: 'The code you entered is incorrect. Please try again or resend a new code.',
-      backgroundColor: FcAppColors.of(context).surface,
-      headerBackgroundColor: FcAppColors.of(context).surface,
-      titleColor: FcAppColors.of(context).textPrimary,
-      textColor: FcAppColors.of(context).textSecondary,
-    );
-  }
-
   Future<void> _completeProfile() async {
-    // Complete phone verification and update Firebase Auth. The cubit itself
+    // Complete phone verification and update Firebase Auth. The bloc itself
     // guards against a stalled Firestore transaction (timeout → ProfileError)
     // so the UI never stays on the loading spinner; its ProfileUpdateSuccess /
     // ProfileError states are handled by the BlocConsumer below.
@@ -175,65 +202,57 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     setState(() => _isResending = true);
 
     try {
-      // The same OTP session id is reused on resend: a fresh code is shown
-      // in a notification but the same otpId stays valid for verification.
+      // The same OTP session id is reused on resend: a fresh code is emailed
+      // but the same otpId stays valid for verification. The new cooldown and
+      // resend count are read back from Firestore so they persist.
       await _otpService.resendOtp(otpId: _otpId);
       if (!mounted) return;
 
       setState(() {
         _isResending = false;
-        _resendCount += 1;
         _showError = false;
         _errorText = null;
       });
-      _otpController.clear();
+      _otpController.reset();
       _otpFocusNode.requestFocus();
-      _startCountdown();
-      QuickAlert.show(
-        context: context,
+      await _loadOtpState();
+      if (!mounted) return;
+      _showQuickAlert(
+        context,
         type: QuickAlertType.success,
         title: 'Code Resent',
         text: 'A new verification code has been sent.',
-        backgroundColor: FcAppColors.of(context).surface,
-        headerBackgroundColor: FcAppColors.of(context).surface,
-        titleColor: FcAppColors.of(context).textPrimary,
-        textColor: FcAppColors.of(context).textSecondary,
       );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isResending = false);
-      QuickAlert.show(
-        context: context,
+      _showQuickAlert(
+        context,
         type: QuickAlertType.error,
         title: 'Resend Failed',
         text: OtpService.otpErrorMessage(e),
-        backgroundColor: FcAppColors.of(context).surface,
-        headerBackgroundColor: FcAppColors.of(context).surface,
-        titleColor: FcAppColors.of(context).textPrimary,
-        textColor: FcAppColors.of(context).textSecondary,
       );
     }
   }
 
-  PinTheme _buildPinTheme(BoxConstraints constraints, bool isDark) {
+  OtpAnimatedTheme _buildAnimatedTheme(bool isDark) {
     final colors = FcAppColors.of(context);
-    final size = constraints.maxWidth < 320.w ? 46.w : 48.w;
-    return PinTheme(
-      width: size,
-      height: 58.h,
+    return OtpAnimatedTheme.light(
+      accentColor: Colors.lightBlueAccent,
+    ).copyWith(
+      fillColor: colors.surface,
+      borderColor:
+          isDark ? Colors.lightBlue.shade300 : Colors.lightBlue.shade200,
+      borderWidth: 1.5.w,
+      borderRadius: 14.r,
+      boxSize: 48.w,
       textStyle: TextStyle(
         color: colors.textPrimary,
         fontSize: 22.sp,
         fontWeight: FontWeight.bold,
       ),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(
-          color: isDark ? Colors.lightBlue.shade300 : Colors.lightBlue.shade200,
-          width: 1.5.w,
-        ),
-      ),
+      keyboardAppearance: isDark ? Brightness.dark : Brightness.light,
+      errorColor: Theme.of(context).colorScheme.error,
     );
   }
 
@@ -242,9 +261,7 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
     final colors = FcAppColors.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return BlocProvider(
-      create: (context) => ProfileCubit(),
-      child: GestureDetector(
+    return GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         child: Scaffold(
           resizeToAvoidBottomInset: true,
@@ -265,16 +282,12 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 // Verification finished: the account is complete, no more
                 // resume point needed.
                 PendingSignupService.instance.clear();
-                QuickAlert.show(
-                  context: context,
+                _showQuickAlert(
+                  context,
                   type: QuickAlertType.success,
                   title: 'Phone Verified!',
                   text: 'Welcome aboard!',
                   barrierDismissible: false,
-                  backgroundColor: FcAppColors.of(context).surface,
-                  headerBackgroundColor: FcAppColors.of(context).surface,
-                  titleColor: FcAppColors.of(context).textPrimary,
-                  textColor: FcAppColors.of(context).textSecondary,
                   onConfirmBtnTap: () {
                     Navigator.of(context, rootNavigator: true).pop();
                     Navigator.pushReplacement(
@@ -289,15 +302,11 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
                 );
               }
               if (state is ProfileError) {
-                QuickAlert.show(
-                  context: context,
+                _showQuickAlert(
+                  context,
                   type: QuickAlertType.error,
                   title: 'Verification Failed',
                   text: state.message,
-                  backgroundColor: FcAppColors.of(context).surface,
-                  headerBackgroundColor: FcAppColors.of(context).surface,
-                  titleColor: FcAppColors.of(context).textPrimary,
-                  textColor: FcAppColors.of(context).textSecondary,
                 );
               }
             },
@@ -305,107 +314,64 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
               final isSavingProfile = state is ProfileLoading;
               return SafeArea(
                 child: SingleChildScrollView(
-                  padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 24.w, vertical: 32.h),
                   child: Column(
                     children: [
-                      SizedBox(height: 24.h),
-                      Container(
-                        width: 96.w,
-                        height: 96.w,
-                        decoration: BoxDecoration(
-                          color: colors.avatarBackground,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.sms_outlined,
-                          size: 44.w,
-                          color: Colors.lightBlueAccent,
-                        ),
+                      const OtpVerificationHeader(),
+                      OtpAnimatedField(
+                        length: 6,
+                        controller: _otpController,
+                        focusNode: _otpFocusNode,
+                        autofocus: true,
+                        enabled: !_isVerifying && !isSavingProfile,
+                        keyboardType: TextInputType.number,
+                        theme: _buildAnimatedTheme(isDark),
+                        onChanged: (_) {
+                          if (_showError) {
+                            setState(() {
+                              _showError = false;
+                              _errorText = null;
+                            });
+                          }
+                        },
+                        onCompleted: (_) => _verifyCode(),
+                        onFailed: (_) => _otpFocusNode.requestFocus(),
                       ),
-                      SizedBox(height: 24.h),
-                      CustomText(
-                        text: 'Enter the 6-digit code',
-                        textColor: colors.textPrimary,
-                        fontSize: 22.sp,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      SizedBox(height: 8.h),
-                      CustomText(
-                        text:
-                            'We sent a verification code\nin a notification',
-                        textAlign: TextAlign.center,
-                        textColor: colors.textSecondary,
-                        fontSize: 15.sp,
-                      ),
-                      SizedBox(height: 32.h),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final defaultTheme = _buildPinTheme(constraints, isDark);
-                          return Pinput(
-                            length: 6,
-                            controller: _otpController,
-                            focusNode: _otpFocusNode,
-                            autofocus: true,
-                            enabled: !_isVerifying && !isSavingProfile,
-                            keyboardType: TextInputType.number,
-                            hapticFeedbackType: HapticFeedbackType.lightImpact,
-                            forceErrorState: _showError,
-                            errorText: _errorText,
-                            errorTextStyle: TextStyle(
+                      if (_showError && _errorText != null)
+                        Padding(
+                          padding: EdgeInsets.only(top: 12.h),
+                          child: Text(
+                            _errorText!,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
                               color: Theme.of(context).colorScheme.error,
                               fontSize: 14.sp,
                             ),
-                            onClipboardFound: (value) {
-                              if (value.length == 6) _verifyCode();
-                            },
-                            onChanged: (_) {
-                              if (_showError) {
-                                setState(() {
-                                  _showError = false;
-                                  _errorText = null;
-                                });
-                              }
-                            },
-                            onCompleted: (_) => _verifyCode(),
-                            defaultPinTheme: defaultTheme,
-                            focusedPinTheme: defaultTheme.copyWith(
-                              decoration: defaultTheme.decoration!.copyWith(
-                                border: Border.all(
-                                  color: Colors.lightBlueAccent,
-                                  width: 2.0.w,
-                                ),
-                              ),
-                            ),
-                            errorPinTheme: defaultTheme.copyWith(
-                              decoration: defaultTheme.decoration!.copyWith(
-                                border: Border.all(
-                                  color: Theme.of(context).colorScheme.error,
-                                  width: 2.0.w,
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                      SizedBox(height: 32.h),
-                      if (_isVerifying || isSavingProfile)
-                        const Center(
-                          child: CircularProgressIndicator(
-                            color: Colors.lightBlueAccent,
-                          ),
-                        )
-                      else
-                        CustomButton(
-                          onPressed: () => _verifyCode(),
-                          buttonColor: Colors.lightBlueAccent,
-                          child: CustomText(
-                            text: 'Verify',
-                            textColor: Colors.white,
-                            fontSize: 18.sp,
                           ),
                         ),
+                      SizedBox(height: 32.h),
+                      CustomButton(
+                        onPressed: () {
+                          if (isSavingProfile) return;
+                          _verifyCode();
+                        },
+                        buttonColor: Colors.lightBlueAccent,
+                        child: CustomText(
+                          text: 'Verify',
+                          textColor: Colors.white,
+                          fontSize: 18.sp,
+                        ),
+                      ),
                       SizedBox(height: 20.h),
-                      _buildResendSection(colors),
+                      ResendSection(
+                        resendCount: _resendCount,
+                        maxResends: _maxResends,
+                        isResending: _isResending,
+                        countdown: _countdown,
+                        canResend: _canResend,
+                        onResend: _resendCode,
+                      ),
                     ],
                   ),
                 ),
@@ -413,54 +379,29 @@ class _PhoneVerificationScreenState extends State<PhoneVerificationScreen> {
             },
           ),
         ),
-      ),
     );
   }
+}
 
-  Widget _buildResendSection(FcAppColors colors) {
-    if (_resendCount >= _maxResends) {
-      return CustomText(
-        text: 'Too many resend attempts. Please try again later.',
-        textColor: colors.textWeak,
-        fontSize: 14.sp,
-        textAlign: TextAlign.center,
-      );
-    }
-
-    return Column(
-      children: [
-        CustomText(
-          text: "Didn't receive the code?",
-          textColor: colors.textSecondary,
-          fontSize: 14.sp,
-        ),
-        SizedBox(height: 4.h),
-        if (_isResending)
-          const SizedBox(
-            height: 20,
-            width: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.lightBlueAccent,
-            ),
-          )
-        else if (_canResend)
-          TextButton(
-            onPressed: _resendCode,
-            child: CustomText(
-              text: 'Resend code',
-              textColor: Colors.lightBlueAccent,
-              fontSize: 15.sp,
-              fontWeight: FontWeight.bold,
-            ),
-          )
-        else
-          CustomText(
-            text: 'Resend code in ${_countdown}s',
-            textColor: colors.textWeak,
-            fontSize: 14.sp,
-          ),
-      ],
-    );
-  }
+void _showQuickAlert(
+  BuildContext context, {
+  required QuickAlertType type,
+  required String title,
+  required String text,
+  bool barrierDismissible = true,
+  VoidCallback? onConfirmBtnTap,
+}) {
+  final colors = FcAppColors.of(context);
+  QuickAlert.show(
+    context: context,
+    type: type,
+    title: title,
+    text: text,
+    barrierDismissible: barrierDismissible,
+    backgroundColor: colors.surface,
+    headerBackgroundColor: colors.surface,
+    titleColor: colors.textPrimary,
+    textColor: colors.textSecondary,
+    onConfirmBtnTap: onConfirmBtnTap,
+  );
 }

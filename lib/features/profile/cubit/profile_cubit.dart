@@ -4,11 +4,14 @@ import 'package:bloc/bloc.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flash_chat_app/features/profile/cubit/profile_state.dart';
-import 'package:flash_chat_app/models/user_model.dart';
-import 'package:flash_chat_app/services/auth/auth.dart';
-import 'package:flash_chat_app/services/auth/phone_registry.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
+import 'package:flash_chat_app/features/auth/services/auth.dart';
+import 'package:flash_chat_app/features/auth/services/phone_registry.dart';
+import 'package:flash_chat_app/core/utils/friendly_error_messages.dart';
+import 'package:flash_chat_app/services/connectivity/connectivity_service.dart';
 import 'package:flash_chat_app/services/presence/presence_service.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class ProfileCubit extends Cubit<ProfileState> {
   final _auth = FirebaseAuth.instance;
@@ -39,31 +42,38 @@ class ProfileCubit extends Cubit<ProfileState> {
   ) async {
     if (legacyTaken) throw Exception(alreadyRegisteredMessage);
 
-    final registryRef = PhoneRegistry.instance.claimRef(phone);
-    final claim = await tx.get(registryRef);
-    if (claim.exists) {
-      final owner = claim.data()?['uid'] as String?;
-      if (owner != null && owner.isNotEmpty && owner != uid) {
-        final ownerSnap =
-            await tx.get(_firestore.collection('users').doc(owner));
-        if (ownerSnap.exists && ownerSnap.data()?['isDeleted'] != true) {
-          throw Exception(alreadyRegisteredMessage);
+    // Check every registry document that could reserve the same number (a
+    // legacy claim may hold the trunk-zero digits, the E.164 digits, or the
+    // local digits - they all describe one physical number).
+    for (final registryRef in PhoneRegistry.instance.claimRefs(phone)) {
+      final claim = await tx.get(registryRef);
+      if (claim.exists) {
+        final owner = claim.data()?['uid'] as String?;
+        if (owner != null && owner.isNotEmpty && owner != uid) {
+          final ownerSnap =
+              await tx.get(_firestore.collection('users').doc(owner));
+          if (ownerSnap.exists && ownerSnap.data()?['isDeleted'] != true) {
+            throw Exception(alreadyRegisteredMessage);
+          }
         }
       }
     }
 
-    tx.set(registryRef, {
+    tx.set(PhoneRegistry.instance.claimRef(phone), {
       'uid': uid,
       'claimedAt': FieldValue.serverTimestamp(),
     });
   }
 
   /// True when another live user's profile (created before the phone
-  /// registry existed) already stores [phone].
+  /// registry existed) already stores [phone] or any equivalent legacy form
+  /// of it (national, trunk-zero, etc.).
   Future<bool> _legacyPhoneTaken(String phone, String uid) async {
+    final forms = PhoneRegistry.equivalentForms(phone);
+    if (forms.isEmpty) return false;
     final legacy = await _firestore
         .collection('users')
-        .where('phoneNumber', isEqualTo: phone)
+        .where('phoneNumber', whereIn: forms)
         .limit(10)
         .get();
     return legacy.docs
@@ -91,7 +101,7 @@ class ProfileCubit extends Cubit<ProfileState> {
       _lastLoadedUser = userModel;
       emit(ProfileLoaded(userModel));
     } catch (e) {
-      emit(ProfileError(e.toString()));
+      emit(ProfileError(friendlyErrorMessage(e)));
     }
   }
 
@@ -134,8 +144,8 @@ final user = _auth.currentUser;
 
         // MERGE only the identity fields: this flow also runs on reinstall if
         // the profile doc is missing/incomplete, and a full overwrite would
-        // wipe chats-related data (mutedChats, nicknames, blockedUids, push
-        // tokens). Merge keeps every pre-existing field intact.
+        // wipe chats-related data (nicknames, blockedUids, push tokens). Merge
+        // keeps every pre-existing field intact.
         tx.set(_firestore.collection('users').doc(uid), {
           'uid': uid,
           'email': email,
@@ -152,7 +162,7 @@ final user = _auth.currentUser;
 
       emit(const ProfileUpdateSuccess("Profile completed successfully!"));
     } catch (e) {
-      emit(ProfileError(e.toString().replaceFirst("Exception: ", "")));
+      emit(ProfileError(friendlyErrorMessage(e)));
     }
   }
 
@@ -177,7 +187,7 @@ final user = _auth.currentUser;
       emit(const ProfileError(
           'Verification is taking too long. Please check your connection and try again.'));
     } catch (e) {
-      emit(ProfileError(e.toString().replaceFirst("Exception: ", "")));
+      emit(ProfileError(friendlyErrorMessage(e)));
     }
 
     // Refresh the Firebase Auth user in the background. MUST NOT block the
@@ -247,8 +257,6 @@ final user = _auth.currentUser;
     required UserModel originalUser,
     required String newFirstName,
     required String newLastName,
-    required String newPhone,
-    required String newEmail,
     String? newEmoji,
     String? newBio,
   }) async {
@@ -258,71 +266,27 @@ final user = _auth.currentUser;
       if (user == null) throw Exception("User not authenticated");
 
       final firestoreUpdates = <String, dynamic>{};
-      bool emailUpdateInitiated = false;
-      bool phoneChanged = false;
 
-      // Check for changes and build the update map
+      // Check for changes and build the update map. Email and phone are
+      // identity fields owned by Auth/registry, so they are read-only here.
       if (newFirstName != originalUser.firstName) firestoreUpdates['firstName'] = newFirstName;
       if (newLastName != originalUser.lastName) firestoreUpdates['lastName'] = newLastName;
       if (newEmoji != null && newEmoji != originalUser.avatarEmoji) firestoreUpdates['avatarEmoji'] = newEmoji;
       if (newBio != originalUser.bio) firestoreUpdates['bio'] = newBio;
 
-      // Initiate email update if changed. Runs before the phone claim so a
-      // rejected email change never leaves the new phone already committed.
-      if (newEmail != originalUser.email) {
-        await user.verifyBeforeUpdateEmail(newEmail);
-        emailUpdateInitiated = true;
-      }
-
-      // Validate and add phone number if changed (deleted-account
-      // tombstones don't block reuse of the number). The new number is
-      // claimed in a transaction so concurrent changes can't collide.
-      if (newPhone != originalUser.phoneNumber) {
-        final phone = PhoneRegistry.toE164(newPhone);
-        if (PhoneRegistry.normalizeDigits(phone).isEmpty) {
-          throw Exception('Please enter a valid phone number.');
-        }
-        final legacyTaken = await _legacyPhoneTaken(phone, user.uid);
-        await _firestore.runTransaction((tx) async {
-          await _claimPhoneInTransaction(
-            tx,
-            phone,
-            user.uid,
-            legacyTaken,
-            "This phone number is already in use.",
-          );
-          tx.set(_firestore.collection('users').doc(user.uid),
-              {'phoneNumber': phone}, SetOptions(merge: true));
-        });
-        // The old number is only released once the new claim committed.
-        await PhoneRegistry.instance.release(originalUser.phoneNumber);
-        phoneChanged = true;
-      }
-
-      if (firestoreUpdates.isEmpty && !emailUpdateInitiated && !phoneChanged) {
+      if (firestoreUpdates.isEmpty) {
         throw Exception("You haven't made any changes.");
       }
 
-      if (firestoreUpdates.isNotEmpty) {
-        await _firestore.collection('users').doc(user.uid).update(firestoreUpdates);
-      }
+      await _firestore.collection('users').doc(user.uid).update(firestoreUpdates);
 
-      String successMessage = "Your profile has been updated!";
-      if (emailUpdateInitiated) {
-        successMessage = "Profile updated! A verification link has been sent to your new email.";
-      }
-      emit(ProfileUpdateSuccess(successMessage));
+      emit(const ProfileUpdateSuccess("Your profile has been updated!"));
 
       // Reload profile to reflect changes instantly
       await loadUserProfile();
 
-    } on FirebaseAuthException catch (e) {
-      String errorMessage = "An error occurred. Please try again.";
-      if (e.code == 'email-already-in-use') errorMessage = 'This email is already in use.';
-      if (e.code == 'requires-recent-login') errorMessage = 'This is a sensitive action. Please log in again to update your email.';
-      emit(ProfileError(errorMessage));
     } catch (e) {
-      emit(ProfileError(e.toString().replaceFirst("Exception: ", "")));
+      emit(ProfileError(friendlyErrorMessage(e)));
     }
   }
 
@@ -338,7 +302,8 @@ final user = _auth.currentUser;
       await loadUserProfile();
     } catch (e) {
       debugPrint('Failed to update presence setting: $e');
-      emit(ProfileError("Failed to update setting: $e"));
+      emit(ProfileError(friendlyErrorMessage(
+          e, fallback: 'Could not update this setting. Please try again.')));
     }
   }
 
@@ -346,15 +311,30 @@ final user = _auth.currentUser;
   Future<void> logout() async {
     emit(ProfileLoading());
     try {
+      // Sign out of Google too so the SDK clears its cached credentials.
+      // Without this, a subsequent "Login with Google" may fail because
+      // the Google SDK still holds stale session state.
+      try {
+        await GoogleSignIn().signOut();
+      } catch (_) {}
       await _auth.signOut();
+      try {
+        await _firestore.clearPersistence();
+      } catch (_) {}
       emit(ProfileLogoutSuccess());
     } catch (e) {
-      emit(ProfileError("Failed to log out: $e"));
+      emit(ProfileError(
+          friendlyErrorMessage(e, fallback: 'Could not log out. Please try again.')));
     }
   }
 
   // --- DELETE ACCOUNT ---
   Future<void> deleteAccount() async {
+    if (!ConnectivityService.instance.isConnected.value) {
+      emit(const ProfileError(
+          'No internet connection. You cannot delete your account while offline.'));
+      return;
+    }
     emit(ProfileLoading());
     try {
       await _performDelete();
@@ -376,6 +356,11 @@ final user = _auth.currentUser;
   /// [password] is required for email/password accounts. For Google accounts
   /// a fresh Google sign-in is triggered instead.
   Future<void> reauthenticateAndDelete({String? password}) async {
+    if (!ConnectivityService.instance.isConnected.value) {
+      emit(const ProfileError(
+          'No internet connection. You cannot delete your account while offline.'));
+      return;
+    }
     emit(ProfileLoading());
     final authService = AuthService();
     try {
@@ -438,6 +423,9 @@ final user = _auth.currentUser;
     } catch (_) {}
 
     await user.delete();
+    try {
+      await _firestore.clearPersistence();
+    } catch (_) {}
   }
 
   String _friendlyDeleteError(Object error) {

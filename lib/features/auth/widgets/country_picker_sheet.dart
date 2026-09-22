@@ -95,7 +95,9 @@ class _CountryPickerSheetState extends State<CountryPickerSheet> {
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12.r),
                     borderSide: BorderSide(
-                      color: isDark ? Colors.lightBlueAccent : Colors.lightBlue.shade300,
+                      color: isDark
+                          ? Colors.lightBlueAccent
+                          : Colors.lightBlue.shade300,
                       width: 1.5.w,
                     ),
                   ),
@@ -125,14 +127,15 @@ class _CountryPickerSheetState extends State<CountryPickerSheet> {
                         return InkWell(
                           onTap: () => Navigator.pop(context, country),
                           child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 16.w, vertical: 12.h),
                             child: Row(
                               children: [
                                 SizedBox(
                                   width: 32.w,
-                                  child: Text(
-                                    country.flag,
-                                    style: TextStyle(fontSize: 22.sp),
+                                  child: CustomText(
+                                    text: country.flag,
+                                    fontSize: 22.sp,
                                   ),
                                 ),
                                 SizedBox(width: 14.w),

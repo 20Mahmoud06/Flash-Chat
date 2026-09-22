@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 
 /// Plays the call UX sounds as a SIDE-EFFECT of the call state machine.
 ///
-/// The call state (in [CallCubit]) is always the source of truth; this
+/// The call state (in [CallBloc]) is always the source of truth; this
 /// manager only reacts to it. A failure here never breaks the call itself.
 ///
 /// Scope of what this manager plays:

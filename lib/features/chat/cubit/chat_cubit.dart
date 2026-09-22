@@ -5,18 +5,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flash_chat_app/features/chat/cubit/chat_state.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flash_chat_app/models/message_model.dart';
-import 'package:flash_chat_app/models/user_model.dart';
+import 'package:flash_chat_app/features/chat/models/message_model.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
 import 'package:flash_chat_app/services/fcm/fcm_v1_sender.dart';
 import 'package:flash_chat_app/services/hms/hms_v1_sender.dart';
-import 'package:flash_chat_app/services/mute/mute_service.dart';
 import 'package:flash_chat_app/services/connectivity/connectivity_service.dart';
 import '../../../services/block/block_service.dart';
 import '../../../services/media/cloudinary_service.dart';
 import '../../../config/cloudinary_config.dart';
-import '../../../core/utils/reply_preview.dart';
+import '../widgets/reply_preview.dart';
 import '../../../core/utils/video_playback_url.dart';
 import '../../../services/offline_queue/offline_queue_service.dart';
+
 
 class _PendingSend {
   final String label;
@@ -97,6 +97,21 @@ class ChatCubit extends Cubit<ChatState> {
   /// read-only even if a stale composer or an offline flush fires late.
   bool _groupIsDeleted = false;
 
+  // ---------------------------------------------------------------------
+  // Reply context
+  // ---------------------------------------------------------------------
+
+  /// Active reply target kept on the cubit rather than only inside
+  /// [ChatLoaded] so a swipe-to-reply / long-press reply survives transient
+  /// states (uploading, error, loading) that would otherwise silently drop
+  /// it — leaving the composer empty or, worse, letting [_captureReplyingTo]
+  /// snapshot a stale (previous) reply instead of the target. Re-applied by
+  /// [_emitLoaded] to every subsequent [ChatLoaded].
+  MessageModel? _activeReplyTo;
+  String? _activeReplySenderName;
+  String? _activeReplyMediaUrl;
+  int? _activeReplyMediaCount;
+
   bool get _canSendInGroupChat => !isGroupChat || !_groupIsDeleted;
 
   /// The currently pinned message (firestore map) or null. Powers the pinned
@@ -109,6 +124,55 @@ class ChatCubit extends Cubit<ChatState> {
 
   Stream<Map<String, dynamic>?> get pinnedMessageStream =>
       _pinnedController.stream;
+
+  // ---------------------------------------------------------------------
+  // Group read receipts (the per-member `lastSeen` watermark on the group
+  // doc), powering the "seen by" ticks / info in group chats.
+  // ---------------------------------------------------------------------
+
+  /// Live per-member read watermark (`lastSeen`) map from the group doc. A
+  /// member is considered to have seen a message when their `lastSeen` is at
+  /// or after that message's timestamp. Only populated for group chats; stays
+  /// empty (const {}) for 1:1 chats, where read state comes from each
+  /// message's `status` field instead.
+  final ValueNotifier<Map<String, Timestamp>> memberLastSeenNotifier =
+      ValueNotifier(const {});
+
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _groupDocSubscription;
+
+  /// Joining / leaving timestamps of every member, used to decide who was
+  /// actually in the group when a message was sent (so members who joined
+  /// later never count against "seen by everyone").
+  Map<String, Timestamp> get memberJoinTimestamps => _groupMemberJoinTimestamps;
+  Map<String, Timestamp> get memberLeaveTimestamps =>
+      _groupMemberLeaveTimestamps;
+
+  /// Listens to the group doc so the seen ticks / info update live the moment
+  /// a member opens the chat (their `lastSeen` watermark moves forward).
+  /// Group chats only.
+  void _listenToGroupReadStates() {
+    if (!isGroupChat) return;
+    _groupDocSubscription?.cancel();
+    _groupDocSubscription = _firestore
+        .collection('groups')
+        .doc(chatId)
+        .snapshots()
+        .listen((snapshot) {
+      final data = snapshot.data();
+      if (data == null) return;
+      final lastSeen = data['lastSeen'];
+      memberLastSeenNotifier.value = lastSeen is Map
+          ? <String, Timestamp>{
+              for (final entry in lastSeen.entries)
+                if (entry.value is Timestamp)
+                  entry.key.toString(): entry.value as Timestamp,
+            }
+          : const {};
+    }, onError: (e) {
+      debugPrint('Failed to load group read states: $e');
+    });
+  }
 
   // ---------------------------------------------------------------------
   // Typing indicator
@@ -125,6 +189,11 @@ class ChatCubit extends Cubit<ChatState> {
   StreamSubscription? _typingSubscription;
   DateTime? _lastTypingWrite;
   bool _typingActive = false;
+
+  /// Throttle for the group `lastSeen` watermark write (mirrors the typing
+  /// throttle): the messages snapshot fires on every reaction/edit, so we must
+  /// not write on each one.
+  DateTime? _lastGroupSeenWrite;
 
   Stream<List<String>> get typingStream => _typingController.stream;
 
@@ -254,6 +323,7 @@ class ChatCubit extends Cubit<ChatState> {
     _listenToMessages();
     _listenToPinnedMessage();
     _listenToTyping();
+    _listenToGroupReadStates();
   }
 
   void _onConnectivityChanged() {
@@ -264,16 +334,18 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   /// Restarts Firestore listeners that may have errored out while offline.
-  /// Unlike a full cubit recreation, this keeps [_cachedMessages] so the UI
+  /// Unlike a full bloc recreation, this keeps [_cachedMessages] so the UI
   /// stays on the current scroll position with no spinner flash.
   void _reconnect() {
     _messagesSubscription?.cancel();
     _pinnedSubscription?.cancel();
     _typingSubscription?.cancel();
+    _groupDocSubscription?.cancel();
 
     _resubscribeMessages();
     _listenToPinnedMessage();
     _listenToTyping();
+    _listenToGroupReadStates();
   }
 
   /// Re-sorts the message cache newest-first by timestamp. Firestore only
@@ -292,18 +364,17 @@ class ChatCubit extends Cubit<ChatState> {
     });
   }
 
-  /// Emits [ChatLoaded] from [_cachedMessages], preserving the reply context
-  /// and the current pagination flags.
+  /// Emits [ChatLoaded] from [_cachedMessages], re-applying the active reply
+  /// context and the current pagination flags.
   void _emitLoaded() {
     _sortCacheNewestFirst();
     _syncPendingPlaceholders();
-    final prev = state is ChatLoaded ? state as ChatLoaded : null;
     emit(ChatLoaded(
       _cachedMessages,
-      replyingTo: prev?.replyingTo,
-      replyingToSenderName: prev?.replyingToSenderName,
-      replyingToMediaUrl: prev?.replyingToMediaUrl,
-      replyingToMediaCount: prev?.replyingToMediaCount,
+      replyingTo: _activeReplyTo,
+      replyingToSenderName: _activeReplySenderName,
+      replyingToMediaUrl: _activeReplyMediaUrl,
+      replyingToMediaCount: _activeReplyMediaCount,
       hasMore: _hasMore,
       loadingMore: _loadingMore,
     ));
@@ -649,7 +720,7 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   /// Rebuilds the send closure for a persisted message. Called when the
-  /// cubit is created after an app restart and the queue is reloaded from
+  /// bloc is created after an app restart and the queue is reloaded from
   /// disk.
   Future<void> Function() _reconstructSendAction(
       PendingMessage msg, UserModel sender) {
@@ -783,9 +854,7 @@ class ChatCubit extends Cubit<ChatState> {
 
       _emitLoaded();
 
-      if (!isGroupChat) {
-        _markMessagesAsSeen();
-      }
+      _markMessagesAsSeen();
     }, onError: (e) {
       emit(const ChatError('Couldn\'t load messages. Please try again.'));
     });
@@ -879,9 +948,7 @@ class ChatCubit extends Cubit<ChatState> {
 
       _emitLoaded();
 
-      if (!isGroupChat) {
-        _markMessagesAsSeen();
-      }
+      _markMessagesAsSeen();
     }, onError: (e) {
       debugPrint('Re-subscribed listener error: $e');
     });
@@ -1061,6 +1128,12 @@ class ChatCubit extends Cubit<ChatState> {
           ? 'seen'
           : 'sent',
       'reactions': {},
+      // These arrays/maps must exist on EVERY message from creation: the
+      // security rules toggle them with arrayUnion/arrayRemove and a missing
+      // field would otherwise make starring / delete-for-me fail.
+      'starredBy': [],
+      'deletedForMe': [],
+      'imageReactions': {},
       'isDeleted': false,
       'isEdited': false,
       if (repliedTo != null) 'repliedTo': repliedTo,
@@ -1118,16 +1191,6 @@ class ChatCubit extends Cubit<ChatState> {
 
       final doc = await _firestore.collection('users').doc(recipientId).get();
       if (!doc.exists) return;
-
-      // Respect the recipient's mute: the message still arrives in the chat,
-      // but no push is sent (this is what keeps muted contacts silent even on
-      // iOS, where the system would otherwise render the APNs alert).
-      final mutedChats = doc.data()?['mutedChats'];
-      if (mutedChats is Map &&
-          MuteService.isMutedEntry(mutedChats[sender.uid])) {
-        debugPrint('Skipping notification: muted by recipient');
-        return;
-      }
 
       final tokens = List<String>.from(doc.data()?['fcmTokens'] ?? []);
       final hmsTokens = List<String>.from(doc.data()?['hmsTokens'] ?? []);
@@ -1218,10 +1281,17 @@ class ChatCubit extends Cubit<ChatState> {
   }
 
   void _markMessagesAsSeen() {
-    // This logic is only for one-on-one chats
-    if (isGroupChat || _auth.currentUser == null) return;
+    if (_auth.currentUser == null) return;
 
-    // Never mark as seen when the conversation is blocked.
+    // Groups have no per-message `status`: read state is a single per-member
+    // `lastSeen` timestamp on the group doc, compared against message
+    // timestamps by the home tile to drive the border + badge.
+    if (isGroupChat) {
+      _markGroupAsSeen();
+      return;
+    }
+
+    // This logic is only for one-on-one chats
     if (_myBlockedUids.contains(recipientId)) return;
 
     final uid = _auth.currentUser!.uid;
@@ -1253,6 +1323,29 @@ class ChatCubit extends Cubit<ChatState> {
       'unreadCounts.$uid': 0,
     }).catchError((e) {
       debugPrint("Failed to reset unread count: $e");
+    });
+  }
+
+  /// Records "I have now read this group" as a per-member timestamp on the
+  /// group doc. Throttled so the frequent message snapshots (reactions, edits,
+  /// read receipts) don't spam writes. The home tile compares this against
+  /// message timestamps to show the unread border + count badge.
+  void _markGroupAsSeen() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final now = DateTime.now();
+    if (_lastGroupSeenWrite != null &&
+        now.difference(_lastGroupSeenWrite!) < const Duration(seconds: 4)) {
+      return;
+    }
+    _lastGroupSeenWrite = now;
+
+    _firestore.collection('groups').doc(chatId).update({
+      'lastSeen.$uid': FieldValue.serverTimestamp(),
+      'unreadCounts.$uid': 0,
+    }).catchError((e) {
+      debugPrint("Failed to update group lastSeen: $e");
     });
   }
 
@@ -1500,18 +1593,19 @@ class ChatCubit extends Cubit<ChatState> {
 
   /// Snapshots the active reply context and clears it. Called before any
   /// send so the reply is captured even though uploading swaps the state.
+  /// Reads the cubit-held reply context (see the "Reply context" fields) so
+  /// it never depends on the current [ChatState] being [ChatLoaded].
   Map<String, dynamic>? _captureReplyingTo() {
-    if (state is! ChatLoaded) return null;
-    final replyingState = state as ChatLoaded;
-    final replyingTo = replyingState.replyingTo;
+    final replyingTo = _activeReplyTo;
+    final senderName = _activeReplySenderName;
     if (replyingTo == null) return null;
 
     // Single-media messages (video / single photo) always fall back to their
     // media URL so replies show a thumbnail even via swipe-to-reply.
     // Multi-photo groups fall back to the first photo + a count badge and
     // render a group "📷 Photos" preview.
-    String? mediaUrl = replyingState.replyingToMediaUrl;
-    int? mediaCount = replyingState.replyingToMediaCount;
+    String? mediaUrl = _activeReplyMediaUrl;
+    int? mediaCount = _activeReplyMediaCount;
     final urls = replyingTo.mediaUrls;
     if (mediaUrl == null && urls != null && urls.isNotEmpty) {
       mediaUrl = urls.first;
@@ -1522,7 +1616,7 @@ class ChatCubit extends Cubit<ChatState> {
 
     final meta = _buildRepliedToMeta(
       message: replyingTo,
-      senderName: replyingState.replyingToSenderName,
+      senderName: senderName,
       mediaUrl: mediaUrl,
       mediaCount: mediaCount,
     );
@@ -1530,21 +1624,32 @@ class ChatCubit extends Cubit<ChatState> {
     return meta;
   }
 
+  /// Sets the active reply context on the cubit, and — whenever the chat is
+  /// in [ChatLoaded] — mirrors it into the emitted state so the composer
+  /// updates immediately. The context is kept on the cubit regardless of the
+  /// state so a swipe during an upload / error / reconnect is never silently
+  /// dropped; [_emitLoaded] re-applies it as soon as a [ChatLoaded] arrives.
   void setReplyingTo(MessageModel? message, String? senderName,
       {String? mediaUrl, int? mediaCount}) {
-    if (state is ChatLoaded) {
-      // Swipe-to-reply doesn't pass a media URL — derive the thumbnail from
-      // the replied message so photo / video previews render in the composer.
-      if (message != null &&
-          mediaUrl == null &&
-          message.mediaUrls != null &&
-          message.mediaUrls!.isNotEmpty) {
-        mediaUrl = message.mediaUrls!.first;
-        if (message.messageType == MessageType.image &&
-            message.mediaUrls!.length > 1) {
-          mediaCount = message.mediaUrls!.length;
-        }
+    // Swipe-to-reply doesn't pass a media URL — derive the thumbnail from
+    // the replied message so photo / video previews render in the composer.
+    if (message != null &&
+        mediaUrl == null &&
+        message.mediaUrls != null &&
+        message.mediaUrls!.isNotEmpty) {
+      mediaUrl = message.mediaUrls!.first;
+      if (message.messageType == MessageType.image &&
+          message.mediaUrls!.length > 1) {
+        mediaCount = message.mediaUrls!.length;
       }
+    }
+
+    _activeReplyTo = message;
+    _activeReplySenderName = senderName;
+    _activeReplyMediaUrl = mediaUrl;
+    _activeReplyMediaCount = mediaCount;
+
+    if (state is ChatLoaded) {
       emit(ChatLoaded(
         _cachedMessages,
         replyingTo: message,
@@ -1944,6 +2049,9 @@ class ChatCubit extends Cubit<ChatState> {
           ? 'seen'
           : 'sent',
       'reactions': {},
+      'starredBy': [],
+      'deletedForMe': [],
+      'imageReactions': {},
       'isDeleted': false,
       'isEdited': false,
       'messageType': messageType.name,
@@ -1988,9 +2096,11 @@ class ChatCubit extends Cubit<ChatState> {
     _messagesSubscription?.cancel();
     _pinnedSubscription?.cancel();
     _typingSubscription?.cancel();
+    _groupDocSubscription?.cancel();
     _typingController.close();
     stopTyping();
     pinnedMessageNotifier.dispose();
+    memberLastSeenNotifier.dispose();
     _pinnedController.close();
     ConnectivityService.instance.isConnected
         .removeListener(_onConnectivityChanged);

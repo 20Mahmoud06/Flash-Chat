@@ -24,7 +24,7 @@ import io.flutter.plugin.common.MethodChannel
  * Tapping the notification reopens the call page.
  *
  * Actions are delivered by [CallControlReceiver] back to the Flutter engine
- * on `flash_chat/call_notification`, which drives the same [CallCubit] calls.
+ * on `flash_chat/call_notification`, which drives the same [CallBloc] calls.
  */
 object CallNotification {
 

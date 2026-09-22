@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flash_chat_app/core/theme/app_theme.dart';
-import 'package:flash_chat_app/models/user_model.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
 import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -76,8 +76,10 @@ class _TypingIndicatorState extends State<TypingIndicator>
       return 'Several people are typing';
     }
     if (widget.typingUids.length == 2) {
-      final first = widget.members[widget.typingUids[0]]?.firstName ?? 'Someone';
-      final second = widget.members[widget.typingUids[1]]?.firstName ?? 'Someone';
+      final first =
+          widget.members[widget.typingUids[0]]?.firstName ?? 'Someone';
+      final second =
+          widget.members[widget.typingUids[1]]?.firstName ?? 'Someone';
       return '$first and $second are typing';
     }
     final name = _typingUser;

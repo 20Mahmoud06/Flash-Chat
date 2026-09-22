@@ -5,7 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:quickalert/quickalert.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
 
-import '../../../models/group_model.dart';
+import '../models/group_model.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text.dart';
 import '../../../shared/widgets/custom_text_form_field.dart';
@@ -59,11 +59,16 @@ class _EditGroupViewState extends State<_EditGroupView> {
   void _pickEmoji() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => EmojiPicker(
-        onEmojiSelected: (category, emoji) {
-          setState(() => _selectedEmoji = emoji.emoji);
-          Navigator.pop(context);
-        },
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: EmojiPicker(
+          onEmojiSelected: (category, emoji) {
+            setState(() => _selectedEmoji = emoji.emoji);
+            Navigator.pop(context);
+          },
+        ),
       ),
     );
   }
@@ -142,9 +147,9 @@ class _EditGroupViewState extends State<_EditGroupView> {
                             radius: 60.r,
                             backgroundColor: colors.avatarBackground,
                             child: _selectedEmoji != null
-                                ? Text(
-                                    _selectedEmoji!,
-                                    style: TextStyle(fontSize: 60.sp),
+                                ? CustomText(
+                                    text: _selectedEmoji!,
+                                    fontSize: 60.sp,
                                   )
                                 : Icon(
                                     Icons.add_reaction_outlined,

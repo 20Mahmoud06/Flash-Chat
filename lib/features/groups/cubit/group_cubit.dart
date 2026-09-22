@@ -2,8 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../models/group_model.dart';
-import '../../../models/user_model.dart';
+import 'package:flash_chat_app/core/utils/friendly_error_messages.dart';
+import '../models/group_model.dart';
+import '../../profile/models/user_model.dart';
 import 'group_state.dart';
 
 class GroupCubit extends Cubit<GroupState> {
@@ -98,7 +99,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       emit(GroupCreated(createdGroup));
     } catch (e) {
-      emit(GroupError('Failed to create group: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not create the group. Please try again.')));
     }
   }
 
@@ -152,7 +154,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       emit(GroupUpdated(updatedGroup));
     } catch (e) {
-      emit(GroupError('Failed to update group: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not update the group. Please try again.')));
     }
   }
 
@@ -165,7 +168,8 @@ class GroupCubit extends Cubit<GroupState> {
     try {
       await _loadGroupAndEmit(group.id);
     } catch (e) {
-      emit(GroupError('Error fetching members: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not load the group members. Please try again.')));
     }
   }
 
@@ -275,6 +279,9 @@ class GroupCubit extends Cubit<GroupState> {
         'timestamp': FieldValue.serverTimestamp(),
         'status': 'sent',
         'reactions': {},
+        'starredBy': [],
+        'deletedForMe': [],
+        'imageReactions': {},
         'isDeleted': false,
         'isEdited': false,
       });
@@ -327,7 +334,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       await _loadGroupAndEmit(group.id);
     } catch (e) {
-      emit(GroupError('Failed to add members: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not add the members. Please try again.')));
     }
   }
 
@@ -383,7 +391,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       await _loadGroupAndEmit(group.id);
     } catch (e) {
-      emit(GroupError('Failed to remove member: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not remove the member. Please try again.')));
     }
   }
 
@@ -453,7 +462,8 @@ class GroupCubit extends Cubit<GroupState> {
       // read-only view of the conversation.
       emit(GroupMemberRemoved());
     } catch (e) {
-      emit(GroupError('Failed to leave group: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not complete leaving the group. Please try again.')));
     }
   }
 
@@ -509,7 +519,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       emit(GroupDeleted());
     } catch (e) {
-      emit(GroupError('Failed to delete group: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not delete the group. Please try again.')));
     }
   }
 
@@ -539,7 +550,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       await _loadGroupAndEmit(group.id);
     } catch (e) {
-      emit(GroupError('Failed to promote member: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not promote the member. Please try again.')));
     }
   }
 
@@ -580,7 +592,8 @@ class GroupCubit extends Cubit<GroupState> {
 
       await _loadGroupAndEmit(group.id);
     } catch (e) {
-      emit(GroupError('Failed to demote admin: $e'));
+      emit(GroupError(friendlyErrorMessage(
+          e, fallback: 'We could not demote the admin. Please try again.')));
     }
   }
 

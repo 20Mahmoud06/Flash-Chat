@@ -15,10 +15,19 @@ assets/service_account.json
 lib/config/cloudinary_config.dart
 lib/config/agora_config.dart
 
+# Agora certificate note file
+App.txt
+
 # Any env/config files
 *.env
+.env
+.env.*
 *.keys
 *.secrets
+
+# Envied-generated build artifact.
+# Regenerate locally with: dart run build_runner build --delete-conflicting-outputs
+lib/config/env.g.dart
 
 # JVM / Gradle crash & Kotlin daemon logs (dev-machine noise)
 hs_err_pid*.log

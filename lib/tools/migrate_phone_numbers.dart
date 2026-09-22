@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flash_chat_app/services/auth/phone_registry.dart';
+import 'package:flash_chat_app/features/auth/services/phone_registry.dart';
 import 'package:flutter/foundation.dart';
 
 /// One-time migration that makes phone uniqueness reliable for existing

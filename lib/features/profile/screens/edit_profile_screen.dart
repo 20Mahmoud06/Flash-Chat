@@ -5,8 +5,7 @@ import 'package:quickalert/quickalert.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/validators.dart';
-import '../../../models/user_model.dart';
+import '../models/user_model.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text.dart';
 import '../../../shared/widgets/custom_text_form_field.dart';
@@ -54,11 +53,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void _pickEmoji() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => EmojiPicker(
-        onEmojiSelected: (category, emoji) {
-          setState(() => _selectedEmoji = emoji.emoji);
-          Navigator.pop(context);
-        },
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: EmojiPicker(
+          onEmojiSelected: (category, emoji) {
+            setState(() => _selectedEmoji = emoji.emoji);
+            Navigator.pop(context);
+          },
+        ),
       ),
     );
   }
@@ -72,8 +76,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           originalUser: widget.user,
           newFirstName: _firstNameController.text.trim(),
           newLastName: _lastNameController.text.trim(),
-          newPhone: _phoneController.text.trim(),
-          newEmail: _emailController.text.trim(),
           newEmoji: _selectedEmoji,
           newBio: newBio.isNotEmpty ? newBio : null,
         );
@@ -144,8 +146,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               radius: 60.r,
                               backgroundColor: colors.avatarBackground,
                               child: _selectedEmoji != null
-                                  ? Text(_selectedEmoji!,
-                                      style: TextStyle(fontSize: 60.sp))
+                                  ? CustomText(
+                                      text: _selectedEmoji!,
+                                      fontSize: 60.sp,
+                                    )
                                   : Icon(Icons.add_reaction_outlined,
                                       size: 60.sp,
                                       color: Colors.lightBlue.shade200),
@@ -174,20 +178,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     CustomTextFormField(
                         controller: _lastNameController,
                         text: 'Last Name',
-                        validator: (v) =>
-                            v!.trim().isEmpty ? 'Required' : null),
+                        validator: (v) => null),
                     SizedBox(height: 16.h),
                     CustomTextFormField(
-                        controller: _phoneController,
-                        text: 'Phone Number',
-                        keyboardType: TextInputType.phone,
-                        validator: validatePhone),
+                      controller: _phoneController,
+                      text: 'Phone Number',
+                      enabled: false,
+                      prefixIcon: Icon(Icons.lock_outline,
+                          color: Colors.grey.shade500, size: 18),
+                      validator: (v) => null,
+                    ),
                     SizedBox(height: 16.h),
                     CustomTextFormField(
-                        controller: _emailController,
-                        text: 'Email Address',
-                        isEmail: true,
-                        validator: validateEmail),
+                      controller: _emailController,
+                      text: 'Email Address',
+                      enabled: false,
+                      prefixIcon: Icon(Icons.lock_outline,
+                          color: Colors.grey.shade500, size: 18),
+                      validator: (v) => null,
+                    ),
                     SizedBox(height: 16.h),
                     CustomTextFormField(
                       controller: _bioController,

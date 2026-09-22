@@ -10,11 +10,13 @@ import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.example.flash_chat_app.CallGuardStore
 import com.example.flash_chat_app.MainActivity
 import com.example.flash_chat_app.NotificationChannels
 import com.example.flash_chat_app.R
 import com.example.flash_chat_app.hms.HmsMessageService
 import com.example.flash_chat_app.hms.HmsPushBridge
+import com.example.flash_chat_app.MissedNotifPrefs
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.messaging.RemoteMessage
@@ -96,6 +98,29 @@ class FlashChatFirebaseMessagingService : FlutterFirebaseMessagingService() {
         val isGroup = payload["isGroup"] == "true"
         val callerId = payload["callerId"]
 
+        // Never re-ring an already-handled 1-to-1 call (a ring was shown
+        // before, it timed out to no_answer, or Dart marked it through the
+        // call-guard bridge). Post the single missed-call notification and
+        // leave it at the same per-call notification id so it never stacks.
+        if (!isGroup && CallGuardStore.isHandled(applicationContext, callId)) {
+            val callerName = payload["callerName"] ?: "Unknown"
+            NotificationChannels.postMissedCallNotification(
+                applicationContext, callId, callerName, isVideo
+            )
+            Log.d(TAG, "Suppressed re-ring for handled call: $callId")
+            return
+        }
+
+        // Use the caller's real name immediately. The nickname resolution
+        // requires a Firestore read which can take 1-3 s on a cold start; by
+        // that time Android's FCM activity-start window has expired and the
+        // full-screen ring is downgraded to a heads-up notification.
+        val callerName = if (isGroup) {
+            payload["groupName"] ?: "Unknown"
+        } else {
+            payload["callerName"] ?: "Unknown"
+        }
+
         val data = Bundle()
         data.putString(CallkitConstants.EXTRA_CALLKIT_ID, callId)
         data.putInt(CallkitConstants.EXTRA_CALLKIT_TYPE, if (isVideo) 1 else 0)
@@ -106,12 +131,14 @@ class FlashChatFirebaseMessagingService : FlutterFirebaseMessagingService() {
         data.putString(CallkitConstants.EXTRA_CALLKIT_TEXT_DECLINE, "Decline")
         data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_CUSTOM_NOTIFICATION, true)
         data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_SHOW_FULL_LOCKED_SCREEN, true)
-        // The app's own incoming-call ringtone (res/raw/ringtone.wav). The
-        // CallKit sound manager resolves this raw resource and loops it on the
-        // RING stream, stopping it on accept/decline/timeout/end.
         data.putString(CallkitConstants.EXTRA_CALLKIT_RINGTONE_PATH, "ringtone")
         data.putString(CallkitConstants.EXTRA_CALLKIT_BACKGROUND_COLOR, "#000000")
         data.putString(CallkitConstants.EXTRA_CALLKIT_ACTION_COLOR, "#4CAF50")
+        data.putString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, callerName)
+        // Marker: the ring screen plays the ringtone/vibration itself ONLY when
+        // a native push launched it (the plugin path in the foreground already
+        // plays it through CallkitNotificationManager — never double-ring).
+        data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_NATIVE_PUSH, true)
 
         // The accept/decline events surface this map back to Dart via the
         // plugin's event channel (CallArguments.fromMap), so it must mirror
@@ -131,77 +158,36 @@ class FlashChatFirebaseMessagingService : FlutterFirebaseMessagingService() {
         if (payload.containsKey("receiverAvatar")) extra["receiverAvatar"] = payload["receiverAvatar"]
         data.putSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA, extra)
 
-        // Resolve the final display name (receiver's nickname for the caller
-        // when set, otherwise the caller's real name) on a worker thread, then
-        // launch the ring once the name is known. The Activity reads the name
-        // once from the Intent, so it must be final before the ring starts.
-        resolveAndLaunchRing(data, isGroup, callerId, payload["callerName"], payload["groupName"])
+        // Launch the ring IMMEDIATELY on the current thread. On Android 12+ the
+        // FCM callback grants a brief activity-start window; spawning a worker
+        // thread (for nickname resolution) before launching caused the window to
+        // expire on cold starts, downgrading the full-screen ring to a heads-up
+        // notification.
+        NotificationChannels.postFullScreenCallRing(applicationContext, data, callId)
+
+        // Persist the guard immediately so a re-delivered push for this same
+        // call can never ring again.
+        if (!isGroup) CallGuardStore.markHandled(applicationContext, callId)
 
         // Schedule a native no-answer timeout: if the call is still ringing in
         // Firestore after the ring window, mark it no_answer so the caller's
         // side and call history stay consistent even when the app is killed.
-        scheduleTimeoutAsync(callId)
-    }
-
-    private fun resolveAndLaunchRing(
-        data: Bundle,
-        isGroup: Boolean,
-        callerId: String?,
-        callerName: String?,
-        groupName: String?
-    ) {
-        Thread {
-            try {
-                val baseName = if (isGroup) groupName else callerName
-                val displayName = if (!isGroup && callerId != null) {
-                    resolveNickname(callerId) ?: (baseName ?: "Unknown")
-                } else {
-                    baseName ?: "Unknown"
-                }
-                data.putString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, displayName)
-                launchRing(data)
-            } catch (t: Throwable) {
-                Log.w(TAG, "Failed to resolve name; launching with payload name: ${t.message}")
-                launchRing(data)
-            }
-        }.start()
-    }
-
-    private fun launchRing(data: Bundle) {
-        val callId = data.getString(CallkitConstants.EXTRA_CALLKIT_ID) ?: return
-        // Marker: the ring screen plays the ringtone/vibration itself ONLY when
-        // a native push launched it (the plugin path in the foreground already
-        // plays it through CallkitNotificationManager — never double-ring).
-        data.putBoolean(CallkitConstants.EXTRA_CALLKIT_IS_NATIVE_PUSH, true)
-        NotificationChannels.postFullScreenCallRing(applicationContext, data, callId)
-    }
-
-    /**
-     * Resolves `users/{me}/nicknames.{callerId}` on the calling thread and
-     * returns the nickname, or null when none is set / the lookup fails.
-     */
-    private fun resolveNickname(callerId: String): String? {
-        return try {
-            val me = FirebaseAuth.getInstance().currentUser?.uid ?: return null
-            val doc = com.google.android.gms.tasks.Tasks.await(
-                FirebaseFirestore.getInstance()
-                    .collection("users")
-                    .document(me)
-                    .get()
-            )
-            (doc.data?.get("nicknames") as? Map<*, *>)?.get(callerId)?.toString()
-        } catch (t: Throwable) {
-            Log.w(TAG, "Nickname lookup failed (using payload name): ${t.message}")
-            null
-        }
+        scheduleTimeoutAsync(callId, callerName, isVideo, isGroup)
     }
 
     /**
      * Best-effort Firestore safety net: after [RING_TIMEOUT_MS], if the call is
      * still ringing (nobody accepted / the receiver was offline / killed), mark
      * it `no_answer` so the caller gets a correct outcome and no call is orphaned.
+     * Also marks the id handled and posts the single missed-call notification so
+     * a re-delivered push does not ring again.
      */
-    private fun scheduleTimeoutAsync(callId: String) {
+    private fun scheduleTimeoutAsync(
+        callId: String,
+        callerName: String,
+        isVideo: Boolean,
+        isGroup: Boolean
+    ) {
         Thread {
             Thread.sleep(RING_TIMEOUT_MS)
             try {
@@ -219,6 +205,14 @@ class FlashChatFirebaseMessagingService : FlutterFirebaseMessagingService() {
                             .document(callId)
                             .update("status", "no_answer")
                     )
+                    if (!isGroup) {
+                        // Single missed-call notification + guard: a re-delivered
+                        // push must never ring this call again.
+                        CallGuardStore.markHandled(applicationContext, callId)
+                        NotificationChannels.postMissedCallNotification(
+                            applicationContext, callId, callerName, isVideo
+                        )
+                    }
                     Log.d(TAG, "Ring timed out natively: $callId")
                 }
             } catch (t: Throwable) {
@@ -328,6 +322,10 @@ class FlashChatFirebaseMessagingService : FlutterFirebaseMessagingService() {
         try {
             notificationManager.notify(id, builder.build())
             Log.d(TAG, "Notification shown for $peerId (id=$id)")
+            // Advance the Dart-side delivered watermark so the next app-open
+            // backfill never re-notifies this conversation — even after the
+            // user swipes this notification away.
+            MissedNotifPrefs.markChatDelivered(applicationContext, peerId, isGroup)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to show notification: ${e.message}")
         }

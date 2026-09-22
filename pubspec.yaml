@@ -59,11 +59,16 @@ dependencies:
   audioplayers: ^6.5.1
   gal: ^2.3.1
   wechat_assets_picker: ^10.1.3
-  pinput: ^6.0.2
+  otp_animated_fields: ^0.1.1
+  envied: ^1.3.9
+  flutter_secure_storage: ^10.3.4
+  firebase_app_check: ^0.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  envied_generator: ^1.3.9
+  build_runner: ^2.15.1
 
 # Vendored fork of flutter_callkit_incoming. The native incoming-call activity
 # is customized so the ring shows the caller's emoji avatar and nickname

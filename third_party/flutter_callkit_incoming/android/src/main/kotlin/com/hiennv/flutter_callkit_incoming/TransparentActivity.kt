@@ -12,6 +12,7 @@ class TransparentActivity : Activity() {
             val intent = Intent(context, TransparentActivity::class.java)
             intent.action = action
             intent.putExtra("data", data)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             intent.addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
             intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)

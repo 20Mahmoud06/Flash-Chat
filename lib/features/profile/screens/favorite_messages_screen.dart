@@ -1,12 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flash_chat_app/core/constants/app_colors.dart';
 import 'package:flash_chat_app/core/theme/app_theme.dart';
 import 'package:flash_chat_app/core/utils/page_transition.dart';
 import 'package:flash_chat_app/features/chat/screens/chat_screen.dart';
-import 'package:flash_chat_app/features/chat/screens/group_chat_screen.dart';
-import 'package:flash_chat_app/models/group_model.dart';
-import 'package:flash_chat_app/models/message_model.dart';
-import 'package:flash_chat_app/models/user_model.dart';
+import 'package:flash_chat_app/features/groups/screens/group_chat_screen.dart';
+import 'package:flash_chat_app/features/groups/models/group_model.dart';
+import 'package:flash_chat_app/features/chat/models/message_model.dart';
+import 'package:flash_chat_app/features/profile/models/user_model.dart';
 import 'package:flash_chat_app/services/connectivity/connectivity_service.dart';
 import 'package:flash_chat_app/shared/widgets/custom_text.dart';
 import 'package:flutter/material.dart';
@@ -24,7 +25,7 @@ class FavoriteMessagesScreen extends StatefulWidget {
 }
 
 class _FavoriteMessagesScreenState extends State<FavoriteMessagesScreen> {
-  static const Color _gold = Color(0xFFFFC107);
+  static const Color _gold = AppColors.amber;
 
   late final String _myUid = FirebaseAuth.instance.currentUser!.uid;
   UserModel? _myUser;
@@ -102,11 +103,11 @@ class _FavoriteMessagesScreenState extends State<FavoriteMessagesScreen> {
       await Navigator.push(
         context,
         PageRouteBuilder(
-pageBuilder: (context, animation, secondaryAnimation) =>
-            GroupChatScreen(
-          group: group,
-          initialJumpMessageId: message.id,
-        ),
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              GroupChatScreen(
+            group: group,
+            initialJumpMessageId: message.id,
+          ),
           transitionsBuilder: PageTransition.slideFromRight,
         ),
       );
@@ -174,22 +175,14 @@ pageBuilder: (context, animation, secondaryAnimation) =>
         stream: _favoritesStream,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            final offline =
-                !ConnectivityService.instance.isConnected.value;
-            final err = snapshot.error.toString();
-            final needsIndex = err.contains('index') &&
-                err.contains('failed-precondition');
+            final offline = !ConnectivityService.instance.isConnected.value;
             return Center(
               child: Padding(
                 padding: EdgeInsets.all(24.w),
                 child: CustomText(
                   text: offline
                       ? 'No saved favorites to read offline yet.'
-                      : needsIndex
-                          ? 'Favorites need a missing Firestore index.\n'
-                              'Run "firebase deploy --only firestore:indexes" '
-                              'in the project folder to create it (free).'
-                          : 'Could not load favorites.\n$err',
+                      : 'Could not load your favorites. Please try again.',
                   fontSize: 14.sp,
                   textAlign: TextAlign.center,
                   textColor: colors.textSecondary,
@@ -199,8 +192,7 @@ pageBuilder: (context, animation, secondaryAnimation) =>
           }
           if (!snapshot.hasData) {
             return const Center(
-              child:
-                  CircularProgressIndicator(color: Colors.lightBlueAccent),
+              child: CircularProgressIndicator(color: Colors.lightBlueAccent),
             );
           }
           final docs = snapshot.data!.docs
@@ -272,8 +264,7 @@ pageBuilder: (context, animation, secondaryAnimation) =>
               final timeText = DateFormat('d MMM, h:mm a')
                   .format(message.timestamp.toDate());
               return Card(
-                margin:
-                    EdgeInsets.symmetric(horizontal: 16.w, vertical: 5.h),
+                margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 5.h),
                 elevation: 1,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14.r),
@@ -327,8 +318,7 @@ pageBuilder: (context, animation, secondaryAnimation) =>
                                 text: group?.name ?? 'Group',
                                 fontSize: 11.sp,
                                 fontWeight: FontWeight.w600,
-                                textColor:
-                                    Colors.lightBlueAccent.shade700,
+                                textColor: Colors.lightBlueAccent.shade700,
                                 overflow: TextOverflow.ellipsis,
                                 maxLines: 1,
                               ),

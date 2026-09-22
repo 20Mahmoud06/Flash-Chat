@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
-import '../../../models/group_model.dart';
-import '../../../models/user_model.dart';
+import '../models/group_model.dart';
+import '../../profile/models/user_model.dart';
 
 abstract class GroupState extends Equatable {
   const GroupState();
