@@ -293,20 +293,22 @@ class CallkitIncomingActivity : Activity() {
     }
 
     /**
-     * Native FCM/HMS push path (app killed/backgrounded): the plugin's sound
-     * manager is not involved there, so the ring screen plays the
-     * ringtone/vibration itself. Also cancels the full-screen-intent
-     * notification the native services posted so no stale heads-up or
-     * duplicate ring stays once the screen is up.
+     * Ensures ringtone playback while this incoming-call Activity is shown.
+     * Takes ownership of sound playback so it reliably stops when the user
+     * accepts, declines, or finishes the screen.
      */
     private fun setupNativePushRing() {
         val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA)
-        if (data?.getBoolean(CallkitConstants.EXTRA_CALLKIT_IS_NATIVE_PUSH, false) == true) {
-            soundManager = CallkitSoundPlayerManager(this)
-            // A MediaPlayer / audio-service failure must never crash the ring
-            // screen (the OS would show "Flash Chat keeps stopping").
+        val pluginSound = FlutterCallkitIncomingPlugin.getInstance()?.getCallkitSoundPlayerManager()
+        if (soundManager == null) {
             try {
-                soundManager?.play(data)
+                // If the plugin-level sound manager was playing, stop it so this Activity
+                // has exclusive ownership and won't double-ring or leak after finish.
+                pluginSound?.stop()
+                soundManager = CallkitSoundPlayerManager(this)
+                if (data != null) {
+                    soundManager?.play(data)
+                }
             } catch (t: Throwable) {
                 Log.e("CallkitIncoming", "Ring playback failed", t)
             }

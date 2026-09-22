@@ -888,31 +888,36 @@ class CallkitNotificationManager(
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getNotificationManager().apply {
-                // Delete the old channel (created with setSound(null,null)
-                // which MIUI / HyperOS freezes as silent). Recreate below
-                // with the bundled ringtone so the notification is audible.
-                try { deleteNotificationChannel(NOTIFICATION_CHANNEL_ID_INCOMING) } catch (_: Exception) {}
-                val channelCall = NotificationChannel(
-                    NOTIFICATION_CHANNEL_ID_INCOMING,
-                    incomingCallChannelName,
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = ""
-                    vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
-                    lightColor = Color.RED
-                    enableLights(true)
-                    enableVibration(true)
-                    setSound(
-                        Uri.parse("android.resource://${context.packageName}/${context.resources.getIdentifier("ringtone", "raw", context.packageName)}"),
-                        android.media.AudioAttributes.Builder()
-                            .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                            .build()
-                    )
+                val existingChannel = getNotificationChannel(NOTIFICATION_CHANNEL_ID_INCOMING)
+                if (existingChannel == null || existingChannel.sound == null) {
+                    if (existingChannel != null) {
+                        try { deleteNotificationChannel(NOTIFICATION_CHANNEL_ID_INCOMING) } catch (_: Exception) {}
+                    }
+                    val channelCall = NotificationChannel(
+                        NOTIFICATION_CHANNEL_ID_INCOMING,
+                        incomingCallChannelName,
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = ""
+                        vibrationPattern = longArrayOf(0, 1000, 500, 1000, 500)
+                        lightColor = Color.RED
+                        enableLights(true)
+                        enableVibration(true)
+                        val resId = context.resources.getIdentifier("ringtone", "raw", context.packageName)
+                        if (resId != 0) {
+                            setSound(
+                                Uri.parse("android.resource://${context.packageName}/$resId"),
+                                android.media.AudioAttributes.Builder()
+                                    .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                                    .build()
+                            )
+                        }
+                    }
+                    channelCall.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                    channelCall.importance = NotificationManager.IMPORTANCE_HIGH
+                    createNotificationChannel(channelCall)
                 }
-                channelCall.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                channelCall.importance = NotificationManager.IMPORTANCE_HIGH
-                createNotificationChannel(channelCall)
 
                 val channelMissedCall = NotificationChannel(
                     NOTIFICATION_CHANNEL_ID_MISSED,

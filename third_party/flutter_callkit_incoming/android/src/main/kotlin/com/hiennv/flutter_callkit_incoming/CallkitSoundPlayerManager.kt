@@ -28,21 +28,11 @@ class CallkitSoundPlayerManager(private val context: Context) {
     /// the android.resource:// URI on a given OEM (silent ring otherwise).
     private var ringtonePlayer: MediaPlayer? = null
 
-    private var isPlaying: Boolean = false
+    var isPlaying: Boolean = false
+        private set
 
     /// Audio-focus bookkeeping so we can release when the ring stops.
     private var audioFocusRequest: AudioFocusRequest? = null
-
-
-    inner class ScreenOffCallkitIncomingBroadcastReceiver : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (isPlaying){
-                stop()
-            }
-        }
-    }
-
-    private var screenOffCallkitIncomingBroadcastReceiver = ScreenOffCallkitIncomingBroadcastReceiver()
 
 
     fun play(data: Bundle) {
@@ -50,9 +40,6 @@ class CallkitSoundPlayerManager(private val context: Context) {
         this.prepare()
         this.playSound(data)
         this.playVibrator()
-
-        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        context.registerReceiver(screenOffCallkitIncomingBroadcastReceiver, filter)
     }
 
     fun stop() {
@@ -64,9 +51,6 @@ class CallkitSoundPlayerManager(private val context: Context) {
         abandonAudioFocus()
         ringtone = null
         vibrator = null
-        try {
-            context.unregisterReceiver(screenOffCallkitIncomingBroadcastReceiver)
-        }catch (_: Exception){}
     }
 
     fun destroy() {
@@ -78,9 +62,6 @@ class CallkitSoundPlayerManager(private val context: Context) {
         abandonAudioFocus()
         ringtone = null
         vibrator = null
-        try {
-            context.unregisterReceiver(screenOffCallkitIncomingBroadcastReceiver)
-        }catch (_: Exception){}
     }
 
     private fun prepare() {
@@ -182,24 +163,23 @@ class CallkitSoundPlayerManager(private val context: Context) {
     // --------------- Sound ---------------
 
     private fun playSound(data: Bundle?) {
+        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val ringerMode = am?.ringerMode ?: AudioManager.RINGER_MODE_NORMAL
+        if (ringerMode == AudioManager.RINGER_MODE_SILENT || ringerMode == AudioManager.RINGER_MODE_VIBRATE) {
+            Log.d(TAG, "Device is in silent or vibrate mode ($ringerMode), skipping audible ringtone")
+            return
+        }
+
         val sound = data?.getString(
             CallkitConstants.EXTRA_CALLKIT_RINGTONE_PATH,
             ""
         )
 
-        // Acquire audio focus on the ALARM stream up front. ALARM is never
-        // ducked or suppressed by OEM skins, so this guarantees our output
-        // will be audible. createResourceMediaPlayer() also requests it
-        // internally, but doing it here covers the RingtoneManager fallback
-        // path as well.
-        requestAudioFocus(alarmAudioAttributes(), AudioManager.STREAM_ALARM)
-
         // Preferred path: play the bundled raw resource through a looping
-        // MediaPlayer created straight from the resource *id*. This bypasses
+        // MediaPlayer created straight from the raw resource fd. This bypasses
         // RingtoneManager entirely, whose handling of "android.resource://"
         // URIs returns a non-null-but-SILENT ringtone on several OEM skins
-        // (most notably MIUI/HyperOS). Because that path "succeeded", the old
-        // code never reached the MediaPlayer fallback and the call rang muted.
+        // (most notably MIUI/HyperOS).
         val resId = if (TextUtils.isEmpty(sound) ||
             sound.equals("system_ringtone_default", true)) {
             0
@@ -225,9 +205,6 @@ class CallkitSoundPlayerManager(private val context: Context) {
         try {
             ringtone = RingtoneManager.getRingtone(context, uri)
             if (ringtone == null) {
-                // RingtoneManager.getRingtone() can still return null on some
-                // OEM skins even for valid URIs; thin deeply into a looping
-                // MediaPlayer before giving up.
                 ringtonePlayer = createFallbackMediaPlayer(uri)
                 return
             }
@@ -242,6 +219,7 @@ class CallkitSoundPlayerManager(private val context: Context) {
             ringtone?.play()
         } catch (e: Exception) {
             Log.e(TAG, "Ringtone fallback failed: ${e.message}")
+            ringtonePlayer = createFallbackMediaPlayer(uri)
         }
     }
 
@@ -249,18 +227,25 @@ class CallkitSoundPlayerManager(private val context: Context) {
      * Plays the bundled raw [resId] ringtone with a looping [MediaPlayer].
      * Tries multiple audio streams in order of reliability:
      *
-     *  1. ALARM — never ducked or suppressed by any OEM skin (MIUI, EMUI,
-     *     OneUI, etc.), so it is tried FIRST on every device.
-     *  2. RING — standard ringtone stream; works on stock Android but is
-     *     silently suppressed by several OEMs.
-     *  3. NOTIFICATION — last-resort fallback that is almost always audible.
-     *
-     * Returns false only when none of the streams can play the resource.
+     *  1. RING — standard ringtone stream; honors ringer volume.
+     *  2. ALARM — never ducked or suppressed by any OEM skin (MIUI, EMUI,
+     *     OneUI, etc.), so it acts as a reliable fallback.
+     *  3. NOTIFICATION — last-resort fallback.
      */
     private fun createResourceMediaPlayer(resId: Int): Boolean {
-        // Attempt 1: ALARM stream — the most reliable path. OEM skins never
-        // duck or suppress STREAM_ALARM, so this works on Xiaomi, Honor,
-        // Samsung and stock devices alike.
+        // Attempt 1: RING stream
+        requestAudioFocus(ringtoneAudioAttributes(), AudioManager.STREAM_RING)
+        if (tryPlayResourceOnStream(
+                resId,
+                ringtoneAudioAttributes(),
+                AudioManager.STREAM_RING
+            )
+        ) {
+            Log.d(TAG, "Playing ring on RING stream")
+            return true
+        }
+
+        // Attempt 2: ALARM stream fallback
         requestAudioFocus(alarmAudioAttributes(), AudioManager.STREAM_ALARM)
         if (tryPlayResourceOnStream(
                 resId,
@@ -272,21 +257,7 @@ class CallkitSoundPlayerManager(private val context: Context) {
             return true
         }
 
-        // Attempt 2: RING stream (standard path on stock Android).
-        if (tryPlayResourceOnStream(
-                resId,
-                ringtoneAudioAttributes(),
-                AudioManager.STREAM_RING
-            )
-        ) {
-            Log.d(TAG, "Playing ring on RING stream")
-            return true
-        }
-
-        // Attempt 3: NOTIFICATION stream — last resort. Some OEM skins
-        // (notably older Honor/EMUI builds) also suppress RING but leave
-        // NOTIFICATION audible.
-        Log.w(TAG, "RING stream silent; retrying on NOTIFICATION stream")
+        // Attempt 3: NOTIFICATION stream fallback
         val notifAttrs = AudioAttributes.Builder()
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .setUsage(AudioAttributes.USAGE_NOTIFICATION)
@@ -305,8 +276,7 @@ class CallkitSoundPlayerManager(private val context: Context) {
     /**
      * Creates a looping [MediaPlayer] for [resId] on [streamType] with the
      * given [attrs]. Returns `true` and stores the player when playback
-     * actually starts; returns `false` on any failure or if the player
-     * reports it is not playing after [start].
+     * actually starts; returns `false` on any failure.
      */
     private fun tryPlayResourceOnStream(
         resId: Int,
@@ -315,21 +285,19 @@ class CallkitSoundPlayerManager(private val context: Context) {
     ): Boolean {
         return try {
             releaseRingtonePlayer()
-            val player: MediaPlayer? =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    MediaPlayer.create(context, resId, attrs, -1)
-                } else {
-                    @Suppress("DEPRECATION")
-                    MediaPlayer.create(context, resId)
-                }
-            if (player == null) return false
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            val afd = context.resources.openRawResourceFd(resId) ?: return false
+            val player = MediaPlayer()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                player.setAudioAttributes(attrs)
+            } else {
                 @Suppress("DEPRECATION")
                 player.setAudioStreamType(streamType)
             }
+            player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            afd.close()
+            player.prepare()
             player.isLooping = true
             player.start()
-            // Some OEM skins return a player whose start() silently no-ops.
             if (!player.isPlaying) {
                 Log.w(TAG, "MediaPlayer.start() did not start playing on stream $streamType")
                 try { player.release() } catch (_: Throwable) {}
@@ -366,29 +334,20 @@ class CallkitSoundPlayerManager(private val context: Context) {
     }
 
     /**
-     * Plays [uri] (expected to be an `android.resource://` raw resource) with a
-     * looping [MediaPlayer] on the RING stream, honoring the ringer volume.
+     * Plays [uri] with a looping [MediaPlayer] on the ALARM stream.
      * Returns null when the resource cannot be played.
      */
     private fun createFallbackMediaPlayer(uri: Uri): MediaPlayer? {
         return try {
-            val player: MediaPlayer? =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    MediaPlayer.create(
-                        context,
-                        uri,
-                        null,
-                        alarmAudioAttributes(),
-                        -1
-                    )
-                } else {
-                    MediaPlayer.create(context, uri)
-                }
-            if (player == null) return null
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            val player = MediaPlayer()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                player.setAudioAttributes(alarmAudioAttributes())
+            } else {
                 @Suppress("DEPRECATION")
                 player.setAudioStreamType(AudioManager.STREAM_ALARM)
             }
+            player.setDataSource(context, uri)
+            player.prepare()
             player.isLooping = true
             player.start()
             player
