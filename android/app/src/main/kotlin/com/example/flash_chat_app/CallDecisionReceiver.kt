@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
@@ -40,19 +41,37 @@ class CallDecisionReceiver : BroadcastReceiver() {
             data.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA) as? Map<*, *>
         }.getOrNull()
         val isGroup = extra?.get("isGroup")?.toString() == "true"
+        val receiverId = extra?.get("receiverId")?.toString()?.takeIf { it.isNotEmpty() }
 
         // A plain BroadcastReceiver may be frozen/paused as soon as onReceive
         // returns, which would kill the persisted decision mid-write.
         // goAsync() keeps the process alive (up to ~10s) for the worker thread.
         val pendingResult = goAsync()
-        Log.d(TAG, "Decision '$decision' for call $callId (group=$isGroup)")
+        Log.d(TAG, "Decision '$decision' for call $callId (group=$isGroup, receiverId=$receiverId)")
         Thread {
             try {
-                val me = waitForSignedInUser()
-                if (me != null) {
-                    Log.d(TAG, "Auth restored for $me; persisting $decision")
+                if (FirebaseApp.getApps(context).isEmpty()) {
+                    FirebaseApp.initializeApp(context)
+                }
+
+                // Resolve user identity: prioritize receiverId from push payload
+                // (instant, zero delay) over waiting for FirebaseAuth restore.
+                val me = receiverId ?: waitForSignedInUser()
+
+                if (!isGroup && decision == "declined") {
+                    // 1-on-1 call decline does NOT require a user ID — we just flip status
+                    // to "declined" so the caller stops ringing instantly.
+                    Log.d(TAG, "Persisting 1-on-1 decline for $callId")
+                    persistDecisionWithRetry(callId, me ?: "", isGroup = false, decision = "declined")
+                } else if (me != null) {
+                    Log.d(TAG, "Auth restored for $me; persisting $decision for $callId")
                     persistDecisionWithRetry(callId, me, isGroup, decision)
                     Log.d(TAG, "persistDecisionWithRetry returned for $callId")
+                } else if (decision == "accepted") {
+                    // Even if auth hasn't restored yet, set call to accepted so caller stops
+                    // ringing and Dart recovery can pick it up. Dart will join participant.
+                    Log.w(TAG, "No signed-in user yet, but persisting accept status for $callId")
+                    persistDecisionWithRetry(callId, "", isGroup = isGroup, decision = "accepted")
                 } else {
                     Log.w(TAG, "No signed-in user; cannot persist $decision for $callId")
                 }
@@ -67,17 +86,13 @@ class CallDecisionReceiver : BroadcastReceiver() {
     /**
      * Waits for the restored FirebaseAuth session. On a cold-started process
      * (full-screen-intent before the engine boots) the token restore can take
-     * well over the old 2s budget on a mid-range device, which silently
-     * dropped every accept/decline (see "decline does nothing" / "deep link
-     * doesn't work"). Polls every 60ms so the write starts the instant auth
-     * resumes; 120 attempts caps at ~7.2s wall, which stays inside the ~10s
-     * goAsync() budget before the system freezes the receiver.
+     * well over the old 2s budget on a mid-range device.
      */
     private fun waitForSignedInUser(): String? {
-        val auth = FirebaseAuth.getInstance()
+        val auth = runCatching { FirebaseAuth.getInstance() }.getOrNull() ?: return null
         var me = auth.currentUser?.uid
         var attempts = 0
-        while (me == null && attempts < 120) {
+        while (me == null && attempts < 50) {
             Thread.sleep(60)
             me = auth.currentUser?.uid
             attempts++
@@ -116,11 +131,6 @@ class CallDecisionReceiver : BroadcastReceiver() {
                 // Accepting always flips the call to accepted (matches the Dart
                 // event handler) and joins the participant, so the accepted-call
                 // recovery and the caller's side both see it.
-                //
-                // The status guard is loosened for GROUP calls: when another
-                // member already joined, the doc is already `accepted` — that
-                // must NOT stop a second/third member from joining through the
-                // native ring. Only a genuinely terminal call is rejected.
                 if (isGroup) {
                     if (status != "ringing" && status != "accepted") {
                         Log.d(TAG, "Not accepting group call $callId from $status")
@@ -130,21 +140,20 @@ class CallDecisionReceiver : BroadcastReceiver() {
                     Log.d(TAG, "Not accepting $callId from $status")
                     return
                 }
-                Tasks.await(
-                    callRef.update(
-                        mapOf(
-                            "status" to "accepted",
-                            "participants" to FieldValue.arrayUnion(me),
-                        )
-                    )
-                )
+                val updateMap = mutableMapOf<String, Any>("status" to "accepted")
+                if (me.isNotEmpty()) {
+                    updateMap["participants"] = FieldValue.arrayUnion(me)
+                }
+                Tasks.await(callRef.update(updateMap))
             }
             "declined" -> {
                 if (isGroup) {
-                    // Member-only: the group call keeps ringing for everyone else.
-                    Tasks.await(
-                        callRef.update(mapOf("participantStatus.$me" to "declined"))
-                    )
+                    if (me.isNotEmpty()) {
+                        // Member-only: the group call keeps ringing for everyone else.
+                        Tasks.await(
+                            callRef.update(mapOf("participantStatus.$me" to "declined"))
+                        )
+                    }
                 } else if (status == "ringing") {
                     Tasks.await(callRef.update(mapOf("status" to "declined")))
                 } else {

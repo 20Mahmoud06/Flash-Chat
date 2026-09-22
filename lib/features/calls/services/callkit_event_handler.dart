@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_callkit_incoming/entities/call_event.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 
@@ -20,6 +22,37 @@ import 'call_service.dart';
 /// moment the Dart isolate starts.
 void initCallKitEventHandler() {
   FlutterCallkitIncoming.onEvent.listen(_handleCallKitEvent);
+  unawaited(checkInitialCallAccept());
+}
+
+/// Cold-boot check: inspects native active calls to see if an incoming call
+/// was accepted while the Flutter isolate was being started.
+Future<void> checkInitialCallAccept() async {
+  try {
+    final calls = await FlutterCallkitIncoming.activeCalls();
+    if (calls is List && calls.isNotEmpty) {
+      for (final call in calls) {
+        if (call is Map) {
+          final isAccepted =
+              call['isAccepted'] == true || call['accepted'] == true;
+          if (isAccepted) {
+            final callId = call['id']?.toString();
+            if (callId != null && callId.isNotEmpty) {
+              debugPrint('checkInitialCallAccept found accepted call: $callId');
+              final event = CallEvent(
+                call,
+                Event.actionCallAccept,
+              );
+              await _handleCallKitEvent(event);
+              break;
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    debugPrint('checkInitialCallAccept error: $e');
+  }
 }
 
 Future<void> _handleCallKitEvent(CallEvent? event) async {
@@ -27,12 +60,12 @@ Future<void> _handleCallKitEvent(CallEvent? event) async {
 
   final name = event.event;
   final body = event.body ?? {};
-  final callId = body['id'];
+  final callId = body['id']?.toString();
   final extra = body['extra'];
 
   debugPrint('CallKit Event: $name, Call ID: $callId');
 
-  if (name == Event.actionCallAccept && callId != null && extra != null) {
+  if (name == Event.actionCallAccept && callId != null) {
     try {
       await CallService.updateCallStatus(callId, 'accepted');
 
@@ -52,7 +85,17 @@ Future<void> _handleCallKitEvent(CallEvent? event) async {
 
       await CallService.joinCall(callId, currentUser.uid);
 
-      final callPayload = Map<String, dynamic>.from(extra);
+      Map<String, dynamic> callPayload;
+      if (extra is Map) {
+        callPayload = Map<String, dynamic>.from(extra);
+      } else {
+        // Fallback: query Firestore document directly if extra wasn't passed
+        final doc = await FirebaseFirestore.instance
+            .collection('calls')
+            .doc(callId)
+            .get();
+        callPayload = Map<String, dynamic>.from(doc.data() ?? {});
+      }
       callPayload['type'] = 'call';
       callPayload['callId'] = callId;
 
@@ -62,7 +105,9 @@ Future<void> _handleCallKitEvent(CallEvent? event) async {
       final routeName = args.isVideo
           ? RouteNames.videoCallPage
           : RouteNames.voiceCallPage;
-      navigatorKey.currentState?.pushNamed(routeName, arguments: args);
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        navigatorKey.currentState?.pushNamed(routeName, arguments: args);
+      });
 
       debugPrint('Accepted call: $callId');
     } catch (e) {

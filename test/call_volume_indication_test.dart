@@ -2,7 +2,6 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flash_chat_app/features/calls/bloc/call_bloc.dart';
 import 'package:flash_chat_app/features/calls/bloc/call_event.dart';
 import 'package:flash_chat_app/features/calls/bloc/call_state.dart';
-import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class TestCallBloc extends CallBloc {

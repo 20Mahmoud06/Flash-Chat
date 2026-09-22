@@ -409,7 +409,7 @@ class CallkitIncomingActivity : Activity() {
         val intent =
             CallkitIncomingBroadcastReceiver.getIntentDecline(this@CallkitIncomingActivity, data)
         sendBroadcast(intent)
-        finishTask()
+        finish()
     }
 
     private fun finishDelayed() {

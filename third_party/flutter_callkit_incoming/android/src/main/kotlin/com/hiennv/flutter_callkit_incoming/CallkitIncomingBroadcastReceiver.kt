@@ -132,78 +132,80 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         val data = intent.extras?.getBundle(CallkitConstants.EXTRA_CALLKIT_INCOMING_DATA) ?: return
-        when (action) {
-            "${context.packageName}.${CallkitConstants.ACTION_CALL_INCOMING}" -> {
-                try {
-                    getCallkitNotificationManager()?.showIncomingNotification(data)
-                    sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
-                    addCall(context, Data.fromBundle(data))
-                } catch (error: Exception) {
-                    Log.e(TAG, null, error)
-                }
-            }
-
-            "${context.packageName}.${CallkitConstants.ACTION_CALL_START}" -> {
-                try {
-                    // start service and show ongoing call when call is accepted
-                    CallkitNotificationService.startServiceWithAction(
-                        context,
-                        CallkitConstants.ACTION_CALL_START,
-                        data
-                    )
-                    sendEventFlutter(CallkitConstants.ACTION_CALL_START, data)
-                    addCall(context, Data.fromBundle(data), true)
-                } catch (error: Exception) {
-                    Log.e(TAG, null, error)
-                }
-            }
-
-            "${context.packageName}.${CallkitConstants.ACTION_CALL_ACCEPT}" -> {
-                try {
-                    // Remove the heads-up (and any later-launched full-screen
-                    // ring) immediately, even with the app killed, so the
-                    // stale Accept/Decline notification cannot linger and
-                    // re-fire the ring screen after the call was accepted.
-                    cancelIncomingCallNotifications(context, data)
-                    // Notify native callbacks only if the plugin is alive; when
-                    // the app was killed the engine is not attached and this
-                    // must be a safe no-op.
-                    if (FlutterCallkitIncomingPlugin.getInstance() != null) {
-                        FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.ACCEPT, data)
+        val pendingResult = goAsync()
+        try {
+            when (action) {
+                "${context.packageName}.${CallkitConstants.ACTION_CALL_INCOMING}" -> {
+                    try {
+                        getCallkitNotificationManager()?.showIncomingNotification(data)
+                        sendEventFlutter(CallkitConstants.ACTION_CALL_INCOMING, data)
+                        addCall(context, Data.fromBundle(data))
+                    } catch (error: Exception) {
+                        Log.e(TAG, null, error)
                     }
-                    // start service and show ongoing call when call is accepted
-                    CallkitNotificationService.startServiceWithAction(
-                        context,
-                        CallkitConstants.ACTION_CALL_ACCEPT,
-                        data
-                    )
-                    sendEventFlutter(CallkitConstants.ACTION_CALL_ACCEPT, data)
-                    addCall(context, Data.fromBundle(data), true)
-                    sendCallDecisionBroadcast(context, "accepted", data)
-                } catch (error: Exception) {
-                    Log.e(TAG, null, error)
                 }
-            }
 
-            "${context.packageName}.${CallkitConstants.ACTION_CALL_DECLINE}" -> {
-                try {
-                    // Log.d(TAG, "[CALLKIT] 📱 ACTION_CALL_DECLINE")
-                    // Remove the heads-up immediately (even with the app
-                    // killed) so tapping Decline actually dismisses it.
-                    cancelIncomingCallNotifications(context, data)
-                    // Notify native decline callbacks only if the plugin is alive
-                    if (FlutterCallkitIncomingPlugin.getInstance() != null) {
-                        FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.DECLINE, data)
+                "${context.packageName}.${CallkitConstants.ACTION_CALL_START}" -> {
+                    try {
+                        // start service and show ongoing call when call is accepted
+                        CallkitNotificationService.startServiceWithAction(
+                            context,
+                            CallkitConstants.ACTION_CALL_START,
+                            data
+                        )
+                        sendEventFlutter(CallkitConstants.ACTION_CALL_START, data)
+                        addCall(context, Data.fromBundle(data), true)
+                    } catch (error: Exception) {
+                        Log.e(TAG, null, error)
                     }
-                    // clear notification
-                    getCallkitNotificationManager()?.clearIncomingNotification(data, false)
-                    sendEventFlutter(CallkitConstants.ACTION_CALL_DECLINE, data)
-                    removeCall(context, Data.fromBundle(data))
-                    sendCallDecisionBroadcast(context, "declined", data)
-                } catch (error: Exception) {
-                    Log.e(TAG, null, error)
                 }
-            }
+
+                "${context.packageName}.${CallkitConstants.ACTION_CALL_ACCEPT}" -> {
+                    try {
+                        // Remove the heads-up (and any later-launched full-screen
+                        // ring) immediately, even with the app killed, so the
+                        // stale Accept/Decline notification cannot linger and
+                        // re-fire the ring screen after the call was accepted.
+                        cancelIncomingCallNotifications(context, data)
+                        // Notify native callbacks only if the plugin is alive; when
+                        // the app was killed the engine is not attached and this
+                        // must be a safe no-op.
+                        if (FlutterCallkitIncomingPlugin.getInstance() != null) {
+                            FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.ACCEPT, data)
+                        }
+                        // start service and show ongoing call when call is accepted
+                        CallkitNotificationService.startServiceWithAction(
+                            context,
+                            CallkitConstants.ACTION_CALL_ACCEPT,
+                            data
+                        )
+                        sendEventFlutter(CallkitConstants.ACTION_CALL_ACCEPT, data)
+                        addCall(context, Data.fromBundle(data), true)
+                        sendCallDecisionBroadcast(context, "accepted", data)
+                    } catch (error: Exception) {
+                        Log.e(TAG, null, error)
+                    }
+                }
+
+                "${context.packageName}.${CallkitConstants.ACTION_CALL_DECLINE}" -> {
+                    try {
+                        // Log.d(TAG, "[CALLKIT] 📱 ACTION_CALL_DECLINE")
+                        // Remove the heads-up immediately (even with the app
+                        // killed) so tapping Decline actually dismisses it.
+                        cancelIncomingCallNotifications(context, data)
+                        // Notify native decline callbacks only if the plugin is alive
+                        if (FlutterCallkitIncomingPlugin.getInstance() != null) {
+                            FlutterCallkitIncomingPlugin.notifyEventCallbacks(CallkitEventCallback.CallEvent.DECLINE, data)
+                        }
+                        // clear notification
+                        getCallkitNotificationManager()?.clearIncomingNotification(data, false)
+                        sendEventFlutter(CallkitConstants.ACTION_CALL_DECLINE, data)
+                        removeCall(context, Data.fromBundle(data))
+                        sendCallDecisionBroadcast(context, "declined", data)
+                    } catch (error: Exception) {
+                        Log.e(TAG, null, error)
+                    }
+                }
 
             "${context.packageName}.${CallkitConstants.ACTION_CALL_ENDED}" -> {
                 try {
@@ -254,6 +256,9 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
                     Log.e(TAG, null, error)
                 }
             }
+        }
+        } finally {
+            pendingResult.finish()
         }
     }
 
@@ -317,23 +322,23 @@ class CallkitIncomingBroadcastReceiver : BroadcastReceiver() {
             "callingNotification" to callingNotification,
             "android" to android
         )
-        // When the engine is dead (app killed) the Dart listener is not
-        // attached, so the event would be dropped. Stash an ACCEPT so it can
-        // be replayed the moment the Dart listener subscribes at cold start —
-        // this is what lets answering from a killed app join the call directly
-        // instead of landing on the home screen. Other events are safe no-ops;
-        // their Firestore outcomes are driven by other paths.
+        // When the engine is dead or Dart listener is not yet attached, the
+        // event would be dropped. Stash an ACCEPT so it can be replayed the
+        // moment the Dart listener subscribes at cold start — this is what lets
+        // answering from a killed app join the call directly instead of landing
+        // on the home screen.
         val plugin = try {
             FlutterCallkitIncomingPlugin.getInstance()
         } catch (_: Exception) {
             null
         }
-        if (plugin == null) {
+        if (plugin == null || !FlutterCallkitIncomingPlugin.hasActiveListener()) {
             if (event == CallkitConstants.ACTION_CALL_ACCEPT) {
                 FlutterCallkitIncomingPlugin.storePendingAcceptEvent(event, forwardData)
             }
-            return
         }
-        FlutterCallkitIncomingPlugin.sendEvent(event, forwardData)
+        if (plugin != null) {
+            FlutterCallkitIncomingPlugin.sendEvent(event, forwardData)
+        }
     }
 }

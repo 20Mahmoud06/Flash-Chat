@@ -43,7 +43,14 @@ class FlutterCallkitIncomingPlugin : FlutterPlugin, MethodCallHandler, ActivityA
         private val eventHandlers = mutableListOf<WeakReference<EventCallbackHandler>>()
         private val eventCallbacks = mutableListOf<WeakReference<CallkitEventCallback>>()
 
+        fun hasActiveListener(): Boolean {
+            return eventHandlers.reapCollection().any { it.get()?.hasSink() == true }
+        }
+
         fun sendEvent(event: String, body: Map<String, Any?>) {
+            if (!hasActiveListener() && event == CallkitConstants.ACTION_CALL_ACCEPT) {
+                storePendingAcceptEvent(event, body)
+            }
             eventHandlers.reapCollection().forEach {
                 it.get()?.send(event, body)
             }
@@ -436,6 +443,27 @@ class FlutterCallkitIncomingPlugin : FlutterPlugin, MethodCallHandler, ActivityA
         instance.context = binding.activity.applicationContext
         instance.activity = binding.activity
         binding.addRequestPermissionsResultListener(this)
+
+        try {
+            val intent = binding.activity.intent
+            if (intent?.action?.endsWith("ACTION_CALL_ACCEPT") == true && !hasActiveListener()) {
+                val data = intent.getBundleExtra(EXTRA_CALLKIT_CALL_DATA)
+                if (data != null) {
+                    val forwardData = mapOf(
+                        "id" to data.getString(CallkitConstants.EXTRA_CALLKIT_ID, ""),
+                        "nameCaller" to data.getString(CallkitConstants.EXTRA_CALLKIT_NAME_CALLER, ""),
+                        "avatar" to data.getString(CallkitConstants.EXTRA_CALLKIT_AVATAR, ""),
+                        "number" to data.getString(CallkitConstants.EXTRA_CALLKIT_HANDLE, ""),
+                        "type" to data.getInt(CallkitConstants.EXTRA_CALLKIT_TYPE, 0),
+                        "duration" to data.getLong(CallkitConstants.EXTRA_CALLKIT_DURATION, 0L),
+                        "textAccept" to data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_ACCEPT, ""),
+                        "textDecline" to data.getString(CallkitConstants.EXTRA_CALLKIT_TEXT_DECLINE, ""),
+                        "extra" to data.getSerializable(CallkitConstants.EXTRA_CALLKIT_EXTRA)
+                    )
+                    storePendingAcceptEvent(CallkitConstants.ACTION_CALL_ACCEPT, forwardData)
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     override fun onDetachedFromActivityForConfigChanges() {
@@ -456,13 +484,31 @@ class FlutterCallkitIncomingPlugin : FlutterPlugin, MethodCallHandler, ActivityA
 
         private var eventSink: EventChannel.EventSink? = null
 
+        fun hasSink(): Boolean = eventSink != null
+
         override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
             eventSink = sink
             // Replay a cold-start ACCEPT that was dropped while the engine was
             // dead (before this listener attached).
-            FlutterCallkitIncomingPlugin.drainPendingAcceptEvent()?.let { pending ->
+            val pending = FlutterCallkitIncomingPlugin.drainPendingAcceptEvent()
+            if (pending != null) {
                 send(pending.first, pending.second)
+                return
             }
+            // Fallback: check if an accepted call exists in SharedPreferences
+            try {
+                val ctx = if (hasInstance()) instance.context else null
+                if (ctx != null) {
+                    val calls = getDataActiveCalls(ctx)
+                    val acceptedCall = calls.firstOrNull { it.isAccepted }
+                    if (acceptedCall != null) {
+                        val body = acceptedCall.args.toMutableMap()
+                        if (!body.containsKey("id")) body["id"] = acceptedCall.id
+                        if (!body.containsKey("extra")) body["extra"] = acceptedCall.extra
+                        send(CallkitConstants.ACTION_CALL_ACCEPT, body)
+                    }
+                }
+            } catch (_: Exception) {}
         }
 
         fun send(event: String, body: Map<String, Any?>) {
