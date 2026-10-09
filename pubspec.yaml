@@ -1,0 +1,87 @@
+name: flash_chat_app
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0' # It's good practice to set an upper bound
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Animation
+  cupertino_icons: ^1.0.8
+  animated_text_kit: ^4.3.0
+  flutter_screenutil: ^5.9.3
+  lottie: ^3.1.2
+  animate_do: ^3.3.4
+  emoji_picker_flutter: ^2.2.0
+  quickalert: ^1.1.0
+
+  # Firebase
+  firebase_core: ^3.3.0
+  firebase_auth: ^5.1.2
+  cloud_firestore: ^5.1.0
+  google_sign_in: ^6.2.1
+
+  # Utilities
+  flutter_offline: ^5.0.0
+  connectivity_plus: ^6.1.5
+  permission_handler: ^12.0.1 # Updated to latest stable version
+  url_launcher: ^6.3.0
+
+  # --- REPLACED acontacts_service ---
+  flutter_contacts: ^1.1.8 # The new, modern contacts package
+  intl: ^0.20.2
+  uuid: ^4.5.2
+  path_provider: ^2.1.5
+  firebase_messaging: ^15.1.0
+  http: ^1.5.0
+  crypto: ^3.0.3
+  shared_preferences: ^2.5.3
+  flutter_local_notifications: ^19.4.2
+  flutter_bloc: ^9.1.1
+  equatable: ^2.0.7
+
+  bloc: any
+  swipe_to: ^1.0.6
+  bidi: ^2.0.13
+  agora_rtc_engine:
+    path: third_party/agora_rtc_engine
+  flutter_callkit_incoming: ^3.0.0
+  agora_token_generator: ^1.0.0
+  image_picker: ^1.2.1
+  file_picker: ^8.0.7
+  record: ^6.0.0
+  just_audio: ^0.9.44
+  video_player: ^2.10.1
+  audioplayers: ^6.5.1
+  gal: ^2.3.1
+  wechat_assets_picker: ^10.1.3
+  otp_animated_fields: ^0.1.1
+  cached_network_image: ^3.4.0
+  flutter_cache_manager: ^3.4.1
+  envied: ^1.3.9
+  flutter_secure_storage: ^10.3.4
+  firebase_app_check: ^0.3.1
+  open_filex: ^4.7.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  envied_generator: ^1.3.9
+  build_runner: ^2.15.1
+
+# Vendored fork of flutter_callkit_incoming. The native incoming-call activity
+# is customized so the ring shows the caller's emoji avatar and nickname
+# instead of the default white circle.
+dependency_overrides:
+  flutter_callkit_incoming:
+    path: third_party/flutter_callkit_incoming
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/animations/
+    - assets/

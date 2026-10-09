@@ -1,0 +1,165 @@
+import 'package:flash_chat_app/features/auth/cubit/auth_state.dart';
+import 'package:flash_chat_app/core/theme/app_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:quickalert/quickalert.dart';
+import '../../../core/utils/validators.dart';
+import '../../../shared/widgets/custom_button.dart';
+import '../../../shared/widgets/custom_text.dart';
+import '../../../shared/widgets/custom_text_form_field.dart';
+import '../cubit/auth_cubit.dart';
+
+class ResetPasswordScreen extends StatefulWidget {
+  const ResetPasswordScreen({super.key});
+
+  @override
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
+}
+
+class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _emailController = TextEditingController();
+
+  bool isGoogleLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  void _resetPassword() {
+    if (_formKey.currentState!.validate()) {
+      context.read<AuthCubit>().resetPassword(_emailController.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
+    return BlocListener<AuthCubit, AuthState>(
+      listener: (context, state) {
+        // Only react while this screen is the current route: it is pushed
+        // on top of Login, whose listener must not also handle its states.
+        if (ModalRoute.of(context)?.isCurrent != true) return;
+        if (state is AuthLoading) {
+        } else if (state is AuthPasswordResetSent) {
+          QuickAlert.show(
+            context: context,
+            type: QuickAlertType.success,
+            title: "Check Your Email",
+            text: "A password reset link has been sent to your email address.",
+            backgroundColor: FcAppColors.of(context).surface,
+            headerBackgroundColor: FcAppColors.of(context).surface,
+            titleColor: FcAppColors.of(context).textPrimary,
+            textColor: FcAppColors.of(context).textSecondary,
+            onConfirmBtnTap: () {
+              Navigator.of(context).pop(); // Dismiss alert
+              Navigator.of(context).pop(); // Go back to login
+            },
+          );
+        } else if (state is AuthError) {
+          QuickAlert.show(
+            context: context,
+            type: QuickAlertType.error,
+            title: "Error",
+            text: state.message,
+            backgroundColor: FcAppColors.of(context).surface,
+            headerBackgroundColor: FcAppColors.of(context).surface,
+            titleColor: FcAppColors.of(context).textPrimary,
+            textColor: FcAppColors.of(context).textSecondary,
+          );
+        }
+      },
+      child: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Scaffold(
+          backgroundColor: colors.surface,
+          body: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24.0.w),
+            child: Form(
+              key: _formKey,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints:
+                          BoxConstraints(minHeight: constraints.maxHeight),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Spacer(),
+                            Hero(
+                              tag: 'logo',
+                              child: SizedBox(
+                                height: 180.0.h,
+                                child: Image.asset('assets/logo.png'),
+                              ),
+                            ),
+                            SizedBox(height: 40.0.h),
+                            CustomTextFormField(
+                              controller: _emailController,
+                              text: 'Email Address',
+                              isEmail: true,
+                              textInputAction: TextInputAction.done,
+                              validator: validateEmail,
+                            ),
+                            SizedBox(height: 24.0.h),
+                            BlocBuilder<AuthCubit, AuthState>(
+                              builder: (context, state) {
+                                if (state is AuthLoading) {
+                                  return const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Colors.lightBlueAccent,
+                                    ),
+                                  );
+                                }
+                                return CustomButton(
+                                  onPressed: _resetPassword,
+                                  buttonColor: Colors.lightBlueAccent,
+                                  child: CustomText(
+                                    text: 'Send Reset Link',
+                                    textColor: Colors.white,
+                                    fontSize: 18.sp,
+                                  ),
+                                );
+                              },
+                            ),
+                            const Spacer(),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                CustomText(
+                                    text: "Remember your password? ",
+                                    fontSize: 16.sp),
+                                GestureDetector(
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                  },
+                                  child: CustomText(
+                                    text: 'Log In',
+                                    textColor: Colors.lightBlueAccent,
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 24.h),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,2 @@
+String? activeChatUserId;
+String? activeGroupId;

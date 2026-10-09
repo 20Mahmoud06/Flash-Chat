@@ -1,0 +1,9 @@
+# build_runner target config so code generation re-runs when the hidden
+# .env files change (they are outside the default source globs).
+targets:
+  $default:
+    sources:
+      - $package$
+      - lib/**
+      - .env*
+      - .env/**

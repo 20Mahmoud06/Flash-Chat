@@ -1,0 +1,96 @@
+# Dart / Flutter
+.dart_tool/
+build/
+
+# VSCode
+.vscode/
+
+# IntelliJ
+.idea/
+
+# Firebase service key
+assets/service_account.json
+
+# Cloudinary & Agora configs
+lib/config/cloudinary_config.dart
+lib/config/agora_config.dart
+
+# Agora certificate note file
+App.txt
+
+# Any env/config files
+*.env
+.env
+.env.*
+!.env.example
+*.keys
+*.secrets
+
+# Envied-generated build artifact.
+# Regenerate locally with: dart run build_runner build --delete-conflicting-outputs
+lib/config/env.g.dart
+
+# JVM / Gradle crash & Kotlin daemon logs (dev-machine noise)
+hs_err_pid*.log
+replay_pid*.log
+android/.kotlin/
+
+# Gradle build caches
+**/.gradle/
+android/.gradle/
+*.iml
+
+# ---------- Project junk ----------
+apk-unzip/
+app-release.zip
+firestore-debug.log
+lib_files.txt
+null
+package.json
+rules_*.txt
+
+# ---------- CMake build cache in vendored plugins ----------
+**/.cxx/
+
+# ---------- Generated iOS/macOS Flutter tooling ----------
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig/
+**/Flutter/flutter_export_environment.sh
+
+# macOS / Windows junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Android signing keys
+android/key.properties
+android/app/*.keystore
+android/app/*.jks
+
+# iOS / macOS build noise
+ios/Pods/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+macos/Pods/
+macos/Flutter/ephemeral/
+*.xcuserstate
+
+# ---------- APK / AAR extraction artifacts (added after first-commit cleanup) ----------
+**/*-extracted/
+**/*-unzip/
+android/*.zip
+android/*.aar
+android/full-rtc-basic-aar/
+android/agora-full-dependencies.txt
+android/arm64.zip
+android/full-rtc-basic.zip
+
+# ---------- Local SDK paths in vendored plugin examples ----------
+**/local.properties
+third_party/**/example/ios/Flutter/ephemeral/
+third_party/**/example/ios/Flutter/Generated.xcconfig
+third_party/**/example/ios/Flutter/flutter_export_environment.sh
+
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+lib/firebase_options.dart

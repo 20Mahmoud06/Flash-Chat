@@ -1,0 +1,241 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:quickalert/quickalert.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+
+import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/phone_formatter.dart';
+import '../models/user_model.dart';
+import '../../../shared/widgets/custom_button.dart';
+import '../../../shared/widgets/custom_text.dart';
+import '../../../shared/widgets/custom_text_form_field.dart';
+import '../cubit/profile_cubit.dart';
+import '../cubit/profile_state.dart';
+
+class EditProfileScreen extends StatefulWidget {
+  final UserModel user;
+  const EditProfileScreen({super.key, required this.user});
+
+  @override
+  State<EditProfileScreen> createState() => _EditProfileScreenState();
+}
+
+class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstNameController;
+  late final TextEditingController _lastNameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _bioController;
+  String? _selectedEmoji;
+
+  @override
+  void initState() {
+    super.initState();
+    _firstNameController = TextEditingController(text: widget.user.firstName);
+    _lastNameController = TextEditingController(text: widget.user.lastName);
+    _phoneController = TextEditingController(
+        text: formatPhoneForDisplay(widget.user.phoneNumber));
+    _emailController = TextEditingController(text: widget.user.email);
+    _bioController = TextEditingController(text: widget.user.bio ?? '');
+    _selectedEmoji = widget.user.avatarEmoji;
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    _bioController.dispose();
+    super.dispose();
+  }
+
+  void _pickEmoji() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Padding(
+        padding:
+            EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+        child: EmojiPicker(
+          onEmojiSelected: (category, emoji) {
+            setState(() => _selectedEmoji = emoji.emoji);
+            Navigator.pop(context);
+          },
+        ),
+      ),
+    );
+  }
+
+  void _saveProfile(BuildContext context) {
+    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+
+    final newBio = _bioController.text.trim();
+    context.read<ProfileCubit>().updateUserProfile(
+          originalUser: widget.user,
+          newFirstName: _firstNameController.text.trim(),
+          newLastName: _lastNameController.text.trim(),
+          newEmoji: _selectedEmoji,
+          newBio: newBio.isNotEmpty ? newBio : null,
+        );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
+    return BlocProvider(
+      create: (context) => ProfileCubit(),
+      child: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Scaffold(
+          backgroundColor: colors.surface,
+          appBar: AppBar(
+            iconTheme: const IconThemeData(color: Colors.white),
+            backgroundColor: Colors.lightBlueAccent,
+            title: const CustomText(
+                text: 'Edit Profile',
+                textColor: Colors.white,
+                fontWeight: FontWeight.bold),
+          ),
+          body: BlocConsumer<ProfileCubit, ProfileState>(
+            listener: (context, state) {
+              if (state is ProfileUpdateSuccess) {
+                QuickAlert.show(
+                  context: context,
+                  type: QuickAlertType.success,
+                  title: 'Success!',
+                  text: state.message,
+                  barrierDismissible: false,
+                  backgroundColor: FcAppColors.of(context).surface,
+                  headerBackgroundColor: FcAppColors.of(context).surface,
+                  titleColor: FcAppColors.of(context).textPrimary,
+                  textColor: FcAppColors.of(context).textSecondary,
+                  onConfirmBtnTap: () {
+                    Navigator.of(context).pop();
+                    Navigator.of(context).pop();
+                  },
+                );
+              }
+              if (state is ProfileError) {
+                QuickAlert.show(
+                  context: context,
+                  type: QuickAlertType.error,
+                  title: 'Update Failed',
+                  text: state.message,
+                  backgroundColor: FcAppColors.of(context).surface,
+                  headerBackgroundColor: FcAppColors.of(context).surface,
+                  titleColor: FcAppColors.of(context).textPrimary,
+                  textColor: FcAppColors.of(context).textSecondary,
+                );
+              }
+            },
+            builder: (context, state) {
+              return Form(
+                key: _formKey,
+                child: ListView(
+                  padding:
+                      EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
+                  children: [
+                    Center(
+                      child: GestureDetector(
+                        onTap: _pickEmoji,
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 60.r,
+                              backgroundColor: colors.avatarBackground,
+                              child: _selectedEmoji != null
+                                  ? CustomText(
+                                      text: _selectedEmoji!,
+                                      fontSize: 60.sp,
+                                    )
+                                  : Icon(Icons.add_reaction_outlined,
+                                      size: 60.sp,
+                                      color: Colors.lightBlue.shade200),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: CircleAvatar(
+                                radius: 20.r,
+                                backgroundColor: Colors.lightBlueAccent,
+                                child: Icon(Icons.edit,
+                                    color: Colors.white, size: 20.r),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 32.h),
+                    CustomTextFormField(
+                        controller: _firstNameController,
+                        text: 'First Name',
+                        validator: (v) =>
+                            v!.trim().isEmpty ? 'Required' : null),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                        controller: _lastNameController,
+                        text: 'Last Name',
+                        validator: (v) => null),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                      controller: _phoneController,
+                      text: 'Phone Number',
+                      enabled: false,
+                      prefixIcon: Icon(Icons.lock_outline,
+                          color: Colors.grey.shade500, size: 18),
+                      validator: (v) => null,
+                    ),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                      controller: _emailController,
+                      text: 'Email Address',
+                      enabled: false,
+                      prefixIcon: Icon(Icons.lock_outline,
+                          color: Colors.grey.shade500, size: 18),
+                      validator: (v) => null,
+                    ),
+                    SizedBox(height: 16.h),
+                    CustomTextFormField(
+                      controller: _bioController,
+                      text: 'Bio',
+                      hintText: 'Add your bio (optional)',
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.multiline,
+                      maxLetters: 70,
+                      validator: (String? p1) {
+                        final bioLength = p1?.trim().length ?? 0;
+                        if (bioLength > 70) {
+                          return 'Bio must be 70 characters or less';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 40.h),
+                    state is ProfileLoading
+                        ? const Center(
+                            child: CircularProgressIndicator(
+                                color: Colors.lightBlueAccent))
+                        : CustomButton(
+                            onPressed: () => _saveProfile(context),
+                            buttonColor: Colors.lightBlueAccent,
+                            child: CustomText(
+                                text: 'Save Changes',
+                                textColor: Colors.white,
+                                fontSize: 18.sp),
+                          ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,162 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/custom_text.dart';
+
+/// Media counts (photos/videos/voice/links) for a group chat, computed from
+/// the group message stream, with tap targets opening the matching gallery tab.
+class GroupMediaSection extends StatelessWidget {
+  static final _urlRegExp = RegExp(r'''(https?://|www\.)[^\s<>"']+''');
+
+  final String chatId;
+  final ValueChanged<int> onOpenGallery;
+
+  const GroupMediaSection({
+    super.key,
+    required this.chatId,
+    required this.onOpenGallery,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
+    return Card(
+      margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 4.h),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16.r),
+        side: BorderSide(color: colors.divider),
+      ),
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('groups')
+            .doc(chatId)
+            .collection('messages')
+            .snapshots(),
+        builder: (context, snapshot) {
+          var photos = 0, videos = 0, voice = 0, links = 0, files = 0;
+          final docs = snapshot.data?.docs ?? const [];
+          for (final doc in docs) {
+            final data = doc.data();
+            if (data['isDeleted'] == true) continue;
+            final type = data['messageType'];
+            if (type == 'image') {
+              final urls = data['mediaUrls'] as List?;
+              final items = data['mediaItems'] as List?;
+              final count = urls?.length ?? items?.length ?? 0;
+              photos += count;
+            } else if (type == 'video') {
+              final urls = data['mediaUrls'] as List?;
+              final items = data['mediaItems'] as List?;
+              final count = urls?.length ?? items?.length ?? 0;
+              videos += count > 0 ? count : 1;
+            } else if (type == 'voice') {
+              voice++;
+            } else if (type == 'file' || type == 'audio') {
+              files++;
+              // Text messages (also the legacy ones sent before the
+              // `messageType` field existed, whose type is null) count as
+              // links when their text contains a URL.
+            } else if ((type == null || type == 'text') &&
+                _urlRegExp.hasMatch(data['text'] ?? '')) {
+              links++;
+            }
+          }
+          return Padding(
+            padding: EdgeInsets.symmetric(vertical: 12.h),
+            child: Row(
+              children: [
+                _MediaTile(
+                  icon: Icons.photo_library_outlined,
+                  color: Colors.blue,
+                  label: 'Photos',
+                  count: photos,
+                  onTap: () => onOpenGallery(0),
+                ),
+                _MediaTile(
+                  icon: Icons.videocam_outlined,
+                  color: Colors.deepOrange,
+                  label: 'Videos',
+                  count: videos,
+                  onTap: () => onOpenGallery(1),
+                ),
+                _MediaTile(
+                  icon: Icons.mic_none,
+                  color: Colors.green,
+                  label: 'Voice',
+                  count: voice,
+                  onTap: () => onOpenGallery(2),
+                ),
+                _MediaTile(
+                  icon: Icons.link,
+                  color: Colors.purple,
+                  label: 'Links',
+                  count: links,
+                  onTap: () => onOpenGallery(3),
+                ),
+                _MediaTile(
+                  icon: Icons.insert_drive_file_outlined,
+                  color: Colors.teal,
+                  label: 'Files',
+                  count: files,
+                  onTap: () => onOpenGallery(4),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _MediaTile extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final int count;
+  final VoidCallback onTap;
+
+  const _MediaTile({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.count,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = FcAppColors.of(context);
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12.r),
+        onTap: onTap,
+        child: Column(
+          children: [
+            CircleAvatar(
+              radius: 24.r,
+              backgroundColor: color.withValues(alpha: 0.12),
+              child: Icon(icon, color: color, size: 24.sp),
+            ),
+            SizedBox(height: 6.h),
+            CustomText(
+              text: label,
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w600,
+              textColor: colors.textSecondary,
+            ),
+            SizedBox(height: 2.h),
+            CustomText(
+              text: count.toString(),
+              fontSize: 15.sp,
+              fontWeight: FontWeight.bold,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
