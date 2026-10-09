@@ -468,7 +468,7 @@ Use environment variables / secure configuration according to the project's conf
 Try the latest available Android APK:
 
 <p align="center">
-  <a href="https://drive.google.com/file/d/1US9gm1RMV56V1NNiNWzWv9IuGWVh9M1P/view?usp=drive_link">
+  <a href="https://drive.google.com/file/d/1cBds4V1jvY28f6EMMgnI6RQQv2GmO_OZ/view?usp=drive_link">
     <img src="https://img.shields.io/badge/Download-APK-blue?style=for-the-badge" />
   </a>
 </p>
